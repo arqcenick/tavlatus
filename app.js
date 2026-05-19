@@ -99,7 +99,8 @@ const canvas = document.getElementById("gameCanvas");
       barHitArea: null,
       bearOffArea: null,
       message: "Roll dice to begin.",
-      runWon: false
+      runWon: false,
+      debugOpen: false
     };
 
     function createChecker(owner, type = CheckerType.STANDARD) {
@@ -217,7 +218,7 @@ const canvas = document.getElementById("gameCanvas");
         {
           kind: "relic",
           title: "Loaded Ledger",
-          detail: "Breaking a red checker pays +$1 immediately.",
+          detail: "Breaking a red checker pays +1 Akçe immediately.",
           price: 5,
           relic: RelicLibrary.LOADED_LEDGER
         },
@@ -231,7 +232,7 @@ const canvas = document.getElementById("gameCanvas");
         {
           kind: "relic",
           title: "Moon Coupon",
-          detail: "Piece upgrades in the shop cost $1 less.",
+          detail: "Piece upgrades in the shop cost 1 Akçe less.",
           price: 3,
           relic: RelicLibrary.MOON_COUPON
         }
@@ -297,7 +298,7 @@ const canvas = document.getElementById("gameCanvas");
 
       const price = getOfferPrice(offer);
       if (GameState.money < price) {
-        GameState.message = `Need $${price} for ${offer.title}.`;
+        GameState.message = `Need ${price} Akçe for ${offer.title}.`;
         return;
       }
 
@@ -306,7 +307,7 @@ const canvas = document.getElementById("gameCanvas");
       GameState.storePurchases += 1;
       if (offer.kind === "relic") addRelic(offer.relic);
       if (offer.kind === "upgrade") addCheckerUpgrade(offer.checkerType);
-      GameState.message = `${offer.title} purchased for $${price}.`;
+      GameState.message = `${offer.title} purchased for ${price} Akçe.`;
     }
 
     function getOfferPrice(offer) {
@@ -567,15 +568,15 @@ const canvas = document.getElementById("gameCanvas");
 
       if (GameState.dice.length === 0) {
         GameState.message = GameState.score.current >= GameState.score.target
-          ? `Target beaten. End turn to cash out.`
+          ? `Target beaten. End turn to collect.`
           : `Move scored ${GameState.score.lastMove.toLocaleString()}. End turn to roll again.`;
       } else if (!hasAnyLegalMove()) {
         GameState.message = GameState.score.current >= GameState.score.target
-          ? "No legal moves left. End turn to cash out."
+          ? "No legal moves left. End turn to collect."
           : "No legal moves left. End turn to roll again.";
       } else {
         GameState.message = GameState.score.current >= GameState.score.target
-          ? `Target beaten. You can keep scoring or end turn to cash out.`
+          ? `Target beaten. You can keep scoring or end turn to collect.`
           : `Move scored ${GameState.score.lastMove.toLocaleString()}. ${GameState.dice.length} dice left.`;
       }
     }
@@ -613,8 +614,8 @@ const canvas = document.getElementById("gameCanvas");
       const { chips, mult, gained, notes } = scoreResult;
       if (brokeEnemy && hasRelic(RelicLibrary.LOADED_LEDGER.id)) {
         GameState.money += 1;
-        notes.push("+$1 Ledger");
-        addFloatingText(layout.leftMenuWidth - 44, 214, "+$1", Theme.gold, 0.9);
+        notes.push("+1 Akçe Ledger");
+        addFloatingText(layout.leftMenuWidth - 44, 214, "+1 Akçe", Theme.gold, 0.9);
       }
 
       GameState.score.current += gained;
@@ -691,7 +692,7 @@ const canvas = document.getElementById("gameCanvas");
         GameState.runWon = true;
         GameState.message = "Run complete. The Boss Blind is beaten.";
       } else {
-        GameState.message = "Blind cleared. Count the cash, then continue to the shop.";
+        GameState.message = "Blind cleared. Count the Akçe, then continue to the shop.";
       }
     }
 
@@ -860,6 +861,7 @@ const canvas = document.getElementById("gameCanvas");
       drawFloatingTexts();
       if (GameState.turnPhase === TurnPhase.ROUND_OVER && GameState.roundPayout) drawRoundClearOverlay(width, height);
       if (GameState.turnPhase === TurnPhase.SHOP) drawStoreOverlay(width, height);
+      drawDebugUI(width, height);
       updateHoverTooltip();
       drawTooltip(width, height);
 
@@ -1006,8 +1008,10 @@ const canvas = document.getElementById("gameCanvas");
       ctx.lineWidth = 2;
       ctx.stroke();
 
-      drawTableField(leftTableX, innerTop, tableWidth, innerHeight, "rgba(255,248,231,0.73)");
-      drawTableField(rightTableX, innerTop, tableWidth, innerHeight, "rgba(255,248,231,0.68)");
+      drawTableField(leftTableX, innerTop, tableWidth, innerHeight, "rgba(10, 3, 16, 0.92)");
+      drawTableField(rightTableX, innerTop, tableWidth, innerHeight, "rgba(10, 3, 16, 0.89)");
+      drawBoardFractal(leftTableX - 4, innerTop - 10, tableWidth + 8, innerHeight + 20);
+      drawBoardFractal(rightTableX - 4, innerTop - 10, tableWidth + 8, innerHeight + 20);
       drawCenterRail(boardLeft, innerTop, boardWidth, innerHeight);
 
       const topRow = Array.from({ length: 12 }, (_, i) => 12 + i);
@@ -1024,9 +1028,105 @@ const canvas = document.getElementById("gameCanvas");
       ctx.fillStyle = fill;
       roundRect(x - 4, y - 10, width + 8, height + 20, 7);
       ctx.fill();
-      ctx.strokeStyle = "rgba(27,16,32,0.18)";
+      ctx.strokeStyle = "rgba(255,248,231,0.14)";
       ctx.lineWidth = 1;
       ctx.stroke();
+    }
+
+    function drawBoardFractal(x, y, w, h) {
+      const t = performance.now() / 1000;
+      const cx = x + w * 0.5;
+      const cy = y + h * 0.5;
+      const S = Math.min(w, h);
+
+      ctx.save();
+      ctx.beginPath();
+      roundRect(x, y, w, h, 7);
+      ctx.clip();
+
+      // Base: slow-rotating conic gradient (deep purples/teals/crimsons)
+      const baseGrad = ctx.createConicGradient(t * 0.06, cx, cy);
+      baseGrad.addColorStop(0,    "#180328");
+      baseGrad.addColorStop(0.2,  "#081832");
+      baseGrad.addColorStop(0.45, "#22080c");
+      baseGrad.addColorStop(0.65, "#061c14");
+      baseGrad.addColorStop(0.85, "#1a0430");
+      baseGrad.addColorStop(1,    "#180328");
+      ctx.fillStyle = baseGrad;
+      ctx.fillRect(x, y, w, h);
+
+      // Drifting colour pools — screen blend makes them glow into each other
+      ctx.globalCompositeOperation = "screen";
+      const pools = [
+        [0.25 + Math.sin(t * 0.13) * 0.10, 0.40 + Math.cos(t * 0.09) * 0.15, "rgba(180,0,255,0.34)"],
+        [0.72 + Math.cos(t * 0.11) * 0.09, 0.60 + Math.sin(t * 0.08) * 0.12, "rgba(255,20,90,0.30)"],
+        [0.50 + Math.sin(t * 0.15) * 0.08, 0.22 + Math.cos(t * 0.12) * 0.10, "rgba(0,200,255,0.26)"],
+        [0.14 + Math.cos(t * 0.17) * 0.06, 0.76 + Math.sin(t * 0.14) * 0.10, "rgba(40,255,130,0.22)"],
+        [0.85 + Math.sin(t * 0.10) * 0.05, 0.30 + Math.cos(t * 0.16) * 0.12, "rgba(255,180,0,0.20)"],
+      ];
+      for (const [rx, ry, color] of pools) {
+        const px = x + w * rx;
+        const py = y + h * ry;
+        const pr = S * 0.60;
+        const pg = ctx.createRadialGradient(px, py, 0, px, py, pr);
+        pg.addColorStop(0, color);
+        pg.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.fillStyle = pg;
+        ctx.fillRect(x, y, w, h);
+      }
+      ctx.globalCompositeOperation = "source-over";
+
+      // Spirograph / hypotrochoid curves — these are the "fractal" weirdness
+      const spirogs = [
+        { col: "#ff2b86", a: 0.18, R: 0.38, r: 0.13, d: 0.11, spd: 0.10, ph: 0.0 },
+        { col: "#35f2a4", a: 0.13, R: 0.30, r: 0.10, d: 0.09, spd: 0.07, ph: 2.0 },
+        { col: "#7c3dff", a: 0.15, R: 0.34, r: 0.15, d: 0.14, spd: 0.13, ph: 1.1 },
+        { col: "#ffe15c", a: 0.10, R: 0.22, r: 0.08, d: 0.07, spd: 0.18, ph: 3.5 },
+      ];
+      for (const sg of spirogs) {
+        const R = S * sg.R, r = S * sg.r, d = S * sg.d;
+        ctx.strokeStyle = sg.col;
+        ctx.globalAlpha = sg.a;
+        ctx.lineWidth = 1.1;
+        ctx.beginPath();
+        const steps = 800;
+        const loops = 28;
+        for (let i = 0; i <= steps; i++) {
+          const theta = (i / steps) * Math.PI * 2 * loops;
+          const phase = t * sg.spd + sg.ph;
+          const px = cx + (R - r) * Math.cos(theta + phase) + d * Math.cos(((R - r) / r) * theta + phase);
+          const py = cy + (R - r) * Math.sin(theta + phase) - d * Math.sin(((R - r) / r) * theta + phase);
+          if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+      }
+
+      // Coloured hex grid — rows cycle through pink / purple / cyan
+      const cell = 50;
+      const fx = (t * 7) % cell;
+      const fy = (t * 3.5) % (cell * 0.866);
+      const gcols = Math.ceil(w / cell) + 3;
+      const grows = Math.ceil(h / (cell * 0.866)) + 3;
+      ctx.lineWidth = 0.75;
+      for (let row = -1; row < grows; row++) {
+        ctx.globalAlpha = 0.09;
+        ctx.strokeStyle = row % 3 === 0 ? "#ff2b86" : row % 3 === 1 ? "#7c3dff" : "#28d4ff";
+        for (let col = -1; col < gcols; col++) {
+          const hx = x - fx + col * cell + (row % 2 === 0 ? 0 : cell * 0.5);
+          const hy = y - fy + row * cell * 0.866;
+          ctx.beginPath();
+          for (let i = 0; i < 6; i++) {
+            const a = (i / 6) * Math.PI * 2 - Math.PI / 6;
+            if (i === 0) ctx.moveTo(hx + Math.cos(a) * cell * 0.5, hy + Math.sin(a) * cell * 0.5);
+            else ctx.lineTo(hx + Math.cos(a) * cell * 0.5, hy + Math.sin(a) * cell * 0.5);
+          }
+          ctx.closePath();
+          ctx.stroke();
+        }
+      }
+
+      ctx.globalAlpha = 1;
+      ctx.restore();
     }
 
     function drawPipRow(row, leftTableX, rightTableX, y, pipWidth, pipHeight, direction) {
@@ -1226,53 +1326,112 @@ const canvas = document.getElementById("gameCanvas");
 
     function drawChecker(cx, cy, radius, owner, checker) {
       const palette = getCheckerPalette(owner, checker);
-      const depth = radius * 0.28;
+      const depth = radius * 0.32;
 
       ctx.save();
+
+      // Ground shadow
       ctx.fillStyle = palette.shadow;
-      ctx.globalAlpha = 0.38;
+      ctx.globalAlpha = 0.42;
       ctx.beginPath();
-      ctx.ellipse(cx + radius * 0.18, cy + depth * 1.1, radius * 0.95, radius * 0.34, 0, 0, Math.PI * 2);
+      ctx.ellipse(cx + radius * 0.16, cy + depth * 1.15, radius * 1.02, radius * 0.32, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.globalAlpha = 1;
 
-      const sideGradient = ctx.createLinearGradient(cx, cy - radius, cx, cy + radius + depth);
+      // Side cylinder (the chip's "depth")
+      const sideGradient = ctx.createLinearGradient(cx, cy, cx, cy + depth);
       sideGradient.addColorStop(0, palette.mid);
-      sideGradient.addColorStop(1, palette.dark);
+      sideGradient.addColorStop(0.55, palette.dark);
+      sideGradient.addColorStop(1, palette.edge);
       ctx.fillStyle = sideGradient;
       ctx.beginPath();
-      ctx.ellipse(cx, cy + depth, radius, radius * 0.74, 0, 0, Math.PI * 2);
+      // body footprint: full ellipse at +depth, capped by top circle
+      ctx.ellipse(cx, cy + depth, radius, radius * 0.36, 0, 0, Math.PI, false);
+      ctx.lineTo(cx - radius, cy);
+      ctx.arc(cx, cy, radius, Math.PI, 0, true);
+      ctx.closePath();
       ctx.fill();
 
-      const topGradient = ctx.createRadialGradient(cx - radius * 0.32, cy - radius * 0.42, radius * 0.08, cx, cy, radius);
+      // Subtle pulse glow for moving enemies (kept — gameplay tell)
+      if (owner === "enemy" && checker.ability === "mover") {
+        ctx.save();
+        ctx.shadowColor = "#ff2b86";
+        ctx.shadowBlur = radius * 1.6;
+        ctx.globalAlpha = 0.18 + Math.sin(performance.now() / 380) * 0.08;
+        ctx.fillStyle = "#ff2b86";
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius * 1.02, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // Top disc (radial gradient — fake light from upper-left)
+      const topGradient = ctx.createRadialGradient(
+        cx - radius * 0.38, cy - radius * 0.46, radius * 0.06,
+        cx + radius * 0.08, cy + radius * 0.12, radius * 1.05
+      );
       topGradient.addColorStop(0, palette.light);
-      topGradient.addColorStop(0.58, palette.base);
+      topGradient.addColorStop(0.45, palette.base);
       topGradient.addColorStop(1, palette.mid);
       ctx.fillStyle = topGradient;
       ctx.beginPath();
       ctx.arc(cx, cy, radius, 0, Math.PI * 2);
       ctx.fill();
 
+      // Outer dark edge
       ctx.strokeStyle = palette.edge;
-      ctx.lineWidth = Math.max(2.5, radius * 0.13);
+      ctx.lineWidth = Math.max(2, radius * 0.10);
       ctx.stroke();
 
-      ctx.strokeStyle = palette.rim;
-      ctx.globalAlpha = 0.58;
-      ctx.lineWidth = Math.max(2, radius * 0.08);
+      // Inner recessed ring (chip styling — subtle, vector-clean)
+      ctx.strokeStyle = palette.dark;
+      ctx.globalAlpha = 0.55;
+      ctx.lineWidth = Math.max(1.2, radius * 0.06);
       ctx.beginPath();
-      ctx.arc(cx, cy, radius * 0.66, -Math.PI * 0.22, Math.PI * 1.16);
+      ctx.arc(cx, cy, radius * 0.72, 0, Math.PI * 2);
       ctx.stroke();
       ctx.globalAlpha = 1;
 
-      if (owner === "enemy" && checker.ability === "mover") {
-        drawSwordIcon(cx, cy, radius);
-      }
+      // Specular highlight crescent (upper-left)
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius * 0.93, 0, Math.PI * 2);
+      ctx.clip();
+      const hl = ctx.createRadialGradient(
+        cx - radius * 0.4, cy - radius * 0.5, radius * 0.04,
+        cx - radius * 0.4, cy - radius * 0.5, radius * 0.8
+      );
+      hl.addColorStop(0, "rgba(255,255,255,0.55)");
+      hl.addColorStop(0.55, "rgba(255,255,255,0.05)");
+      hl.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = hl;
+      ctx.beginPath();
+      ctx.arc(cx - radius * 0.32, cy - radius * 0.36, radius * 0.7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      // Tiny bottom-right ambient bounce (very subtle)
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius * 0.93, 0, Math.PI * 2);
+      ctx.clip();
+      const bounce = ctx.createRadialGradient(
+        cx + radius * 0.45, cy + radius * 0.42, radius * 0.04,
+        cx + radius * 0.45, cy + radius * 0.42, radius * 0.7
+      );
+      bounce.addColorStop(0, "rgba(255,255,255,0.18)");
+      bounce.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = bounce;
+      ctx.beginPath();
+      ctx.arc(cx + radius * 0.35, cy + radius * 0.34, radius * 0.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
       ctx.restore();
     }
 
     function drawPipNumber(pipIndex, cx, cy) {
-      ctx.fillStyle = "rgba(25,24,22,0.42)";
+      ctx.fillStyle = "rgba(255,248,231,0.38)";
       ctx.font = "800 12px Inter, sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
@@ -1392,7 +1551,7 @@ const canvas = document.getElementById("gameCanvas");
       cursorY += 56;
       drawLeftMetric(x + 18, cursorY, menuWidth - 36, "Rolls", String(GameState.rollsRemaining), Theme.blue);
       cursorY += 56;
-      drawLeftMetric(x + 18, cursorY, menuWidth - 36, "Cash", `$${GameState.money}`, Theme.gold);
+      drawLeftMetric(x + 18, cursorY, menuWidth - 36, "Akçe", String(GameState.money), Theme.gold, "akce");
 
       cursorY += 70;
       drawButton(x + 18, cursorY, menuWidth - 36, 54, getPrimaryLabel(), getPrimaryAction(), canUsePrimaryButton());
@@ -1415,7 +1574,7 @@ const canvas = document.getElementById("gameCanvas");
       drawMessagePanel(x + 18, cursorY, menuWidth - 36, Math.max(74, y + menuHeight - cursorY - 18));
     }
 
-    function drawLeftMetric(x, y, width, label, value, color) {
+    function drawLeftMetric(x, y, width, label, value, color, iconKind) {
       ctx.fillStyle = "rgba(255,248,231,0.10)";
       roundRect(x, y, width, 48, 8);
       ctx.fill();
@@ -1431,6 +1590,11 @@ const canvas = document.getElementById("gameCanvas");
       ctx.fillStyle = color;
       ctx.font = "900 22px Inter, sans-serif";
       ctx.fillText(value, x + 12, y + 33);
+
+      if (iconKind === "akce") {
+        const valueWidth = ctx.measureText(value).width;
+        drawAkceIcon(x + 12 + valueWidth + 14, y + 32, 10);
+      }
 
       GameState.buttons.push({
         x,
@@ -1656,8 +1820,8 @@ const canvas = document.getElementById("gameCanvas");
       ctx.fillText("PAYOUT", width / 2, y + 122);
 
       const rows = [
-        [`Remaining rolls`, `$${payout.remainingRolls}`],
-        [`${LevelConfig[GameState.levelIndex].bossRule ? "Boss" : "Normal"} blind`, `$${payout.blindReward}`],
+        [`Remaining rolls`, `${payout.remainingRolls} Akçe`],
+        [`${LevelConfig[GameState.levelIndex].bossRule ? "Boss" : "Normal"} blind`, `${payout.blindReward} Akçe`],
         ["Mars", payout.mars ? "x2" : "x1"]
       ];
 
@@ -1679,10 +1843,13 @@ const canvas = document.getElementById("gameCanvas");
       ctx.textAlign = "center";
       ctx.fillStyle = Theme.darkInk;
       ctx.font = "950 34px Inter, sans-serif";
-      ctx.fillText(`+$${countedTotal}`, width / 2, y + 346);
+      const totalLabel = `+${countedTotal} Akçe`;
+      ctx.fillText(totalLabel, width / 2, y + 346);
+      const totalW = ctx.measureText(totalLabel).width;
+      drawAkceIcon(width / 2 + totalW / 2 + 22, y + 346, 14);
       ctx.font = "750 13px Inter, sans-serif";
       ctx.fillStyle = "#6e2458";
-      ctx.fillText(`Cash now: $${countedCash}`, width / 2, y + 380);
+      ctx.fillText(`Akçe now: ${countedCash}`, width / 2, y + 380);
 
       drawButton(width / 2 - 92, y + cardH - 58, 184, 42, GameState.runWon ? "New Run" : "Continue", continueAfterRoundClear, true, "primary");
       ctx.restore();
@@ -1717,7 +1884,10 @@ const canvas = document.getElementById("gameCanvas");
       ctx.fillText("Shop", x + 34, y + 48);
       ctx.font = "850 16px Inter, sans-serif";
       ctx.fillStyle = Theme.gold;
-      ctx.fillText(`Cash $${GameState.money}`, x + 34, y + 82);
+      const cashLabel = `${GameState.money} Akçe`;
+      ctx.fillText(cashLabel, x + 34, y + 82);
+      const cashW = ctx.measureText(cashLabel).width;
+      drawAkceIcon(x + 34 + cashW + 16, y + 82, 9);
       ctx.fillStyle = Theme.muted;
       ctx.font = "750 13px Inter, sans-serif";
       wrapText("Buy any cards you can afford. Relics are global; piece upgrades hit the top white checker.", x + 34, y + 106, panelW - 68, 16);
@@ -1768,7 +1938,12 @@ const canvas = document.getElementById("gameCanvas");
       ctx.textBaseline = "middle";
       truncateText(offer.title, x + 12, y + 22, width - 70);
       ctx.textAlign = "right";
-      ctx.fillText(offer.bought ? "SOLD" : `$${price}`, x + width - 12, y + 22);
+      const priceLabel = offer.bought ? "SOLD" : `${price} Akçe`;
+      ctx.fillText(priceLabel, x + width - 12, y + 22);
+      if (!offer.bought) {
+        const pW = ctx.measureText(priceLabel).width;
+        drawAkceIcon(x + width - 12 - pW - 10, y + 22, 7);
+      }
       ctx.textAlign = "left";
       ctx.fillStyle = "#5c2352";
       ctx.font = `${width < 260 ? "700 10px" : "700 11px"} Inter, sans-serif`;
@@ -1783,8 +1958,8 @@ const canvas = document.getElementById("gameCanvas");
           action: () => chooseShopOffer(offer),
           tooltip: {
             kind: "shop",
-            title: `${offer.title} - $${price}`,
-            body: `${offer.detail} ${affordable ? "Click to buy." : "Not enough cash yet."}`
+            title: `${offer.title} - ${price} Akçe`,
+            body: `${offer.detail} ${affordable ? "Click to buy." : "Not enough Akçe yet."}`
           }
         });
       }
@@ -2287,8 +2462,8 @@ const canvas = document.getElementById("gameCanvas");
         Score: "Your current round total. Reach the Target before rolls run out to clear the blind.",
         Target: "The blind requirement. Small Blind is 750, Big Blind is 1,400, Boss Blind is 2,600.",
         "Global Mult": "The round-wide Mult starts at x1. Base movement scores 10 Chips x die value x global Mult.",
-        Rolls: "Rolls left in this blind. Each unused roll pays $1 when the blind is cleared.",
-        Cash: "Money to spend in the shop. Normal blinds pay $3, boss blinds pay $5, and Mars doubles the payout."
+        Rolls: "Rolls left in this blind. Each unused roll pays 1 Akçe when the blind is cleared.",
+        Akçe: "Money to spend in the shop. Normal blinds pay 3 Akçe, boss blinds pay 5 Akçe, and Mars doubles the payout."
       };
       return {
         kind: "metric",
@@ -2300,7 +2475,7 @@ const canvas = document.getElementById("gameCanvas");
     function getButtonTooltip(label) {
       const copy = {
         "Rolling...": "Dice roll automatically at the start of each turn.",
-        "End Turn": "End this turn. If your score beats the target, cash out the blind; otherwise the next dice roll starts automatically.",
+        "End Turn": "End this turn. If your score beats the target, collect the blind; otherwise the next dice roll starts automatically.",
         "Next Blind": "Advance to the next blind, keeping drafted relics.",
         Continue: "Continue from the payout screen to the shop.",
         "New Run": "Start a fresh run from Small Blind.",
@@ -2699,6 +2874,285 @@ const canvas = document.getElementById("gameCanvas");
       ctx.restore();
     }
 
+    function drawAkceIcon(cx, cy, radius) {
+      ctx.save();
+      // Outer rim shadow
+      ctx.beginPath();
+      ctx.arc(cx, cy + radius * 0.18, radius * 1.02, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(0,0,0,0.45)";
+      ctx.fill();
+
+      // Coin body — silver gradient
+      const grad = ctx.createRadialGradient(cx - radius * 0.3, cy - radius * 0.35, radius * 0.1, cx, cy, radius * 1.1);
+      grad.addColorStop(0, "#f5f1de");
+      grad.addColorStop(0.45, "#c9c2a5");
+      grad.addColorStop(1, "#766b4e");
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.fillStyle = grad;
+      ctx.fill();
+
+      // Dark rim
+      ctx.lineWidth = Math.max(1, radius * 0.12);
+      ctx.strokeStyle = "rgba(50,40,16,0.9)";
+      ctx.stroke();
+
+      // Inner decorative ring
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius * 0.72, 0, Math.PI * 2);
+      ctx.lineWidth = Math.max(0.8, radius * 0.06);
+      ctx.strokeStyle = "rgba(70,55,20,0.65)";
+      ctx.stroke();
+
+      // Crescent moon
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.fillStyle = "#3e2e0d";
+      ctx.beginPath();
+      ctx.arc(-radius * 0.05, 0, radius * 0.42, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalCompositeOperation = "destination-out";
+      ctx.beginPath();
+      ctx.arc(radius * 0.12, -radius * 0.05, radius * 0.36, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      // Star (if big enough)
+      if (radius >= 9) {
+        ctx.save();
+        ctx.translate(cx + radius * 0.38, cy + radius * 0.04);
+        ctx.fillStyle = "#3e2e0d";
+        ctx.beginPath();
+        for (let i = 0; i < 5; i++) {
+          const ang = (i / 5) * Math.PI * 2 - Math.PI / 2;
+          const r1 = radius * 0.18;
+          const r2 = radius * 0.08;
+          ctx.lineTo(Math.cos(ang) * r1, Math.sin(ang) * r1);
+          ctx.lineTo(Math.cos(ang + Math.PI / 5) * r2, Math.sin(ang + Math.PI / 5) * r2);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // Highlight
+      ctx.beginPath();
+      ctx.arc(cx - radius * 0.35, cy - radius * 0.4, radius * 0.22, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(255,255,240,0.55)";
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function drawDebugUI(width, height) {
+      const toggleW = 78;
+      const toggleH = 26;
+      const toggleX = width - toggleW - 14;
+      const toggleY = 14;
+      const open = GameState.debugOpen;
+
+      ctx.save();
+      // Toggle pill
+      ctx.beginPath();
+      roundRect(toggleX, toggleY, toggleW, toggleH, 8);
+      ctx.fillStyle = open ? "rgba(255,225,92,0.92)" : "rgba(22,8,23,0.78)";
+      ctx.fill();
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = open ? "#5b3c00" : "rgba(255,225,92,0.55)";
+      ctx.stroke();
+
+      ctx.fillStyle = open ? "#1b1020" : Theme.gold;
+      ctx.font = "900 12px Inter, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("DEBUG", toggleX + toggleW / 2, toggleY + toggleH / 2);
+      ctx.restore();
+
+      GameState.buttons.push({
+        x: toggleX,
+        y: toggleY,
+        width: toggleW,
+        height: toggleH,
+        action: () => { GameState.debugOpen = !GameState.debugOpen; },
+        tooltip: { kind: "debug", title: "Debug Menu", body: "Toggle the debug cheats panel." }
+      });
+
+      if (!open) return;
+
+      const actions = [
+        {
+          label: "+5 Mult",
+          color: Theme.accent,
+          fn: () => {
+            GameState.score.mult += 5;
+            addFloatingText(width - 120, 80, "+5 Mult", Theme.accent, 1.0);
+          }
+        },
+        {
+          label: "+5 Rolls",
+          color: Theme.blue,
+          fn: () => {
+            GameState.rollsRemaining += 5;
+            addFloatingText(width - 120, 80, "+5 Rolls", Theme.blue, 1.0);
+          }
+        },
+        {
+          label: "Score: hit target",
+          color: Theme.gold,
+          fn: () => {
+            const need = Math.max(0, GameState.score.target - GameState.score.current);
+            const bump = need > 0 ? need : Math.max(200, Math.ceil(GameState.score.target * 0.25));
+            GameState.score.current += bump;
+            addFloatingText(width - 120, 80, `+${bump.toLocaleString()}`, Theme.gold, 1.0);
+          }
+        },
+        {
+          label: "+50 Akçe",
+          color: Theme.gold,
+          fn: () => {
+            GameState.money += 50;
+            addFloatingText(width - 120, 80, "+50 Akçe", Theme.gold, 1.0);
+          }
+        }
+      ];
+
+      const panelW = 168;
+      const panelPad = 8;
+      const btnH = 30;
+      const btnGap = 6;
+      const panelH = panelPad * 2 + actions.length * btnH + (actions.length - 1) * btnGap;
+      const panelX = width - panelW - 14;
+      const panelY = toggleY + toggleH + 8;
+
+      ctx.save();
+      ctx.beginPath();
+      roundRect(panelX, panelY, panelW, panelH, 10);
+      ctx.fillStyle = "rgba(22,8,23,0.92)";
+      ctx.fill();
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = "rgba(255,225,92,0.45)";
+      ctx.stroke();
+      ctx.restore();
+
+      let by = panelY + panelPad;
+      for (const action of actions) {
+        const bx = panelX + panelPad;
+        const bw = panelW - panelPad * 2;
+        ctx.save();
+        ctx.beginPath();
+        roundRect(bx, by, bw, btnH, 7);
+        ctx.fillStyle = action.color;
+        ctx.globalAlpha = 0.92;
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = Theme.darkInk;
+        ctx.font = "900 12px Inter, sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(action.label, bx + bw / 2, by + btnH / 2);
+        ctx.restore();
+
+        GameState.buttons.push({
+          x: bx,
+          y: by,
+          width: bw,
+          height: btnH,
+          action: action.fn,
+          tooltip: { kind: "debug", title: action.label, body: "Debug cheat." }
+        });
+
+        by += btnH + btnGap;
+      }
+    }
+
+    function drawCheckerGlyph(cx, cy, radius, type, palette) {
+      const g = radius * 0.34;
+      ctx.save();
+      ctx.strokeStyle = palette.edge;
+      ctx.fillStyle = palette.light;
+      ctx.lineWidth = Math.max(1.5, radius * 0.07);
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.globalAlpha = 0.78;
+
+      if (type === CheckerType.GOLDEN) {
+        ctx.beginPath();
+        for (let i = 0; i < 5; i++) {
+          const outer = (i / 5) * Math.PI * 2 - Math.PI / 2;
+          const inner = outer + Math.PI / 5;
+          const ox = cx + Math.cos(outer) * g;
+          const oy = cy + Math.sin(outer) * g;
+          const ix = cx + Math.cos(inner) * g * 0.42;
+          const iy = cy + Math.sin(inner) * g * 0.42;
+          if (i === 0) ctx.moveTo(ox, oy); else ctx.lineTo(ox, oy);
+          ctx.lineTo(ix, iy);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+      } else if (type === CheckerType.GLASS) {
+        ctx.beginPath();
+        ctx.moveTo(cx, cy - g);
+        ctx.lineTo(cx + g * 0.72, cy);
+        ctx.lineTo(cx, cy + g);
+        ctx.lineTo(cx - g * 0.72, cy);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+      } else if (type === CheckerType.ANCHOR) {
+        ctx.beginPath();
+        ctx.moveTo(cx, cy - g * 0.9);
+        ctx.lineTo(cx, cy + g * 0.9);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(cx - g * 0.6, cy - g * 0.25);
+        ctx.lineTo(cx + g * 0.6, cy - g * 0.25);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(cx, cy + g * 0.3, g * 0.52, 0, Math.PI);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(cx, cy - g * 0.9, g * 0.2, 0, Math.PI * 2);
+        ctx.fill();
+
+      } else if (type === CheckerType.RUBY) {
+        ctx.beginPath();
+        for (let i = 0; i < 6; i++) {
+          const a = (i / 6) * Math.PI * 2 - Math.PI / 6;
+          const px = cx + Math.cos(a) * g * 0.82;
+          const py = cy + Math.sin(a) * g * 0.82;
+          if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+      } else if (type === CheckerType.PRISM) {
+        ctx.beginPath();
+        ctx.moveTo(cx, cy - g);
+        ctx.lineTo(cx + g * 0.88, cy + g * 0.5);
+        ctx.lineTo(cx - g * 0.88, cy + g * 0.5);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+      } else if (type === CheckerType.SPRINTER) {
+        ctx.beginPath();
+        ctx.moveTo(cx + g * 0.22, cy - g);
+        ctx.lineTo(cx - g * 0.08, cy - g * 0.05);
+        ctx.lineTo(cx + g * 0.3, cy - g * 0.05);
+        ctx.lineTo(cx - g * 0.22, cy + g);
+        ctx.lineTo(cx + g * 0.06, cy + g * 0.08);
+        ctx.lineTo(cx - g * 0.3, cy + g * 0.08);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      }
+
+      ctx.restore();
+    }
+
     function shuffle(items) {
       const copy = [...items];
       for (let i = copy.length - 1; i > 0; i--) {
@@ -2757,7 +3211,11 @@ const canvas = document.getElementById("gameCanvas");
       },
       cash(amount = 20) {
         GameState.money = amount;
-        return `Cash set to $${amount}.`;
+        return `Akçe set to ${amount}.`;
+      },
+      akce(amount = 20) {
+        GameState.money = amount;
+        return `Akçe set to ${amount}.`;
       },
       score(amount = GameState.score.target) {
         GameState.score.current = amount;
