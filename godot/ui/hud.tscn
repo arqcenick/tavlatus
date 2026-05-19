@@ -1,0 +1,89 @@
+[gd_scene load_steps=2 format=3 uid="uid://b0hud0000000001"]
+
+[ext_resource type="Script" path="res://ui/hud.gd" id="1_hud"]
+
+[node name="HUD" type="CanvasLayer"]
+script = ExtResource("1_hud")
+
+[node name="LeftPanel" type="PanelContainer" parent="."]
+offset_left = 16.0
+offset_top = 16.0
+offset_right = 296.0
+offset_bottom = 760.0
+
+[node name="VBox" type="VBoxContainer" parent="LeftPanel"]
+custom_minimum_size = Vector2(256, 0)
+
+[node name="Title" type="Label" parent="LeftPanel/VBox"]
+text = "Pipjack"
+theme_override_font_sizes/font_size = 28
+
+[node name="ScoreRow" type="HBoxContainer" parent="LeftPanel/VBox"]
+
+[node name="Label" type="Label" parent="LeftPanel/VBox/ScoreRow"]
+text = "Score"
+size_flags_horizontal = 3
+
+[node name="Value" type="Label" parent="LeftPanel/VBox/ScoreRow"]
+text = "0"
+
+[node name="TargetRow" type="HBoxContainer" parent="LeftPanel/VBox"]
+
+[node name="Label" type="Label" parent="LeftPanel/VBox/TargetRow"]
+text = "Target"
+size_flags_horizontal = 3
+
+[node name="Value" type="Label" parent="LeftPanel/VBox/TargetRow"]
+text = "750"
+
+[node name="MultRow" type="HBoxContainer" parent="LeftPanel/VBox"]
+
+[node name="Label" type="Label" parent="LeftPanel/VBox/MultRow"]
+text = "Mult"
+size_flags_horizontal = 3
+
+[node name="Value" type="Label" parent="LeftPanel/VBox/MultRow"]
+text = "x1"
+
+[node name="RollsRow" type="HBoxContainer" parent="LeftPanel/VBox"]
+
+[node name="Label" type="Label" parent="LeftPanel/VBox/RollsRow"]
+text = "Rolls"
+size_flags_horizontal = 3
+
+[node name="Value" type="Label" parent="LeftPanel/VBox/RollsRow"]
+text = "0"
+
+[node name="AkceRow" type="HBoxContainer" parent="LeftPanel/VBox"]
+
+[node name="Label" type="Label" parent="LeftPanel/VBox/AkceRow"]
+text = "Akçe"
+size_flags_horizontal = 3
+
+[node name="Value" type="Label" parent="LeftPanel/VBox/AkceRow"]
+text = "0"
+
+[node name="Message" type="Label" parent="LeftPanel/VBox"]
+text = ""
+autowrap_mode = 2
+
+[node name="DebugPanel" type="PanelContainer" parent="."]
+offset_left = 1080.0
+offset_top = 16.0
+offset_right = 1264.0
+offset_bottom = 200.0
+visible = false
+
+[node name="VBox" type="VBoxContainer" parent="DebugPanel"]
+
+[node name="MultBtn" type="Button" parent="DebugPanel/VBox"]
+text = "+5 Mult"
+
+[node name="RollsBtn" type="Button" parent="DebugPanel/VBox"]
+text = "+5 Rolls"
+
+[node name="ScoreBtn" type="Button" parent="DebugPanel/VBox"]
+text = "Hit Target"
+
+[node name="MoneyBtn" type="Button" parent="DebugPanel/VBox"]
+text = "+50 Akçe"

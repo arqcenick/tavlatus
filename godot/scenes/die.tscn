@@ -1,0 +1,19 @@
+[gd_scene load_steps=4 format=3 uid="uid://b0die00000001"]
+
+[ext_resource type="Script" path="res://scripts/die.gd" id="1_die"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_die"]
+size = Vector3(0.5, 0.5, 0.5)
+
+[sub_resource type="BoxMesh" id="BoxMesh_die"]
+size = Vector3(0.5, 0.5, 0.5)
+
+[node name="Die" type="RigidBody3D"]
+mass = 0.1
+script = ExtResource("1_die")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+shape = SubResource("BoxShape3D_die")
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+mesh = SubResource("BoxMesh_die")

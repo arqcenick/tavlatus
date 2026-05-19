@@ -1,0 +1,15 @@
+[gd_scene load_steps=4 format=3 uid="uid://b0board000001"]
+
+[ext_resource type="Script" path="res://scripts/board.gd" id="1_board"]
+[ext_resource type="PackedScene" uid="uid://b0pip00000001" path="res://scenes/pip.tscn" id="2_pip"]
+
+[sub_resource type="BoxMesh" id="BoxMesh_board"]
+size = Vector3(13.5, 0.2, 9.0)
+
+[node name="Board" type="Node3D"]
+script = ExtResource("1_board")
+pip_scene = ExtResource("2_pip")
+
+[node name="Surface" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.1, 0)
+mesh = SubResource("BoxMesh_board")

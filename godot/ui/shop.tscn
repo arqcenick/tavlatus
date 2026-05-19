@@ -1,0 +1,24 @@
+[gd_scene format=3 uid="uid://b0shop0000000001"]
+
+[node name="Shop" type="CanvasLayer"]
+
+[node name="Panel" type="PanelContainer" parent="."]
+offset_left = 200.0
+offset_top = 120.0
+offset_right = 1080.0
+offset_bottom = 680.0
+
+[node name="VBox" type="VBoxContainer" parent="Panel"]
+
+[node name="Title" type="Label" parent="Panel/VBox"]
+text = "Shop"
+theme_override_font_sizes/font_size = 36
+
+[node name="Akce" type="Label" parent="Panel/VBox"]
+text = "Akçe: 0"
+
+[node name="Offers" type="GridContainer" parent="Panel/VBox"]
+columns = 5
+
+[node name="Continue" type="Button" parent="Panel/VBox"]
+text = "Continue"
