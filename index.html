@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pipjack</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="game-core.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <button class="drawer-toggle" id="rulesToggle" type="button" aria-controls="rulesDrawer" aria-expanded="false">
+    Rules
+  </button>
+
+  <div class="drawer-scrim" id="drawerScrim" hidden></div>
+
+  <aside class="rules-drawer" id="rulesDrawer" aria-label="Rules and scoring" aria-hidden="true">
+    <div class="drawer-head">
+      <div>
+        <p class="panel-kicker">Rules</p>
+        <h1>Pipjack</h1>
+      </div>
+      <button class="drawer-close" id="rulesClose" type="button" aria-label="Close rules">Close</button>
+    </div>
+
+    <h2>Score, then survive the blind.</h2>
+    <p>Dice roll automatically. Select a white checker, move by an available die, then End Turn to roll again or cash out a beaten blind.</p>
+
+    <dl>
+      <div>
+        <dt>Base move</dt>
+        <dd>Every moved checker scores <strong>10 Chips x die value</strong> before Mult.</dd>
+      </div>
+      <div>
+        <dt>Scoring</dt>
+        <dd>Move Score = <strong>Chips x global Mult</strong>, then checker and tile Mult can push it higher.</dd>
+      </div>
+      <div>
+        <dt>Pass-over hooks</dt>
+        <dd>Checkers now jump pip-by-pip. Passed pips can trigger future effects before the checker lands.</dd>
+      </div>
+      <div>
+        <dt>Break</dt>
+        <dd>Land on one red checker to break it for <strong>+200 Chips</strong>.</dd>
+      </div>
+      <div>
+        <dt>Allied landing</dt>
+        <dd>Land on white checkers to gain <strong>+50 Chips</strong> for each white checker already there.</dd>
+      </div>
+      <div>
+        <dt>Bear off</dt>
+        <dd>Move past pip 24 to score <strong>+250 Chips</strong>.</dd>
+      </div>
+      <div>
+        <dt>Doubles</dt>
+        <dd>Rolling a double turns the matched dice into <strong>four moves</strong> of that value.</dd>
+      </div>
+      <div>
+        <dt>Payout</dt>
+        <dd>Clearing a normal blind pays <strong>$3</strong>, the boss pays <strong>$5</strong>, and unused rolls pay <strong>$1</strong> each.</dd>
+      </div>
+      <div>
+        <dt>Mars</dt>
+        <dd>Win before a mover enemy reaches the end to double the payout.</dd>
+      </div>
+      <div>
+        <dt>Enemies</dt>
+        <dd>Bright red enemies stay still. Darker red enemies with swords move 2 pips at end of turn unless blocked by two or more white checkers.</dd>
+      </div>
+      <div>
+        <dt>Tiles</dt>
+        <dd><strong>Forge</strong> gives that checker +1 Mult forever. <strong>Market</strong> doubles Chips for that move.</dd>
+      </div>
+      <div>
+        <dt>Shop</dt>
+        <dd>Clear a blind to visit the shop. Buy from two relic offers and three piece upgrade offers before the next blind.</dd>
+      </div>
+    </dl>
+  </aside>
+
+  <main class="game-stage">
+    <canvas id="gameCanvas" width="1280" height="800" aria-label="Pipjack backgammon roguelike prototype"></canvas>
+  </main>
+</body>
+</html>
