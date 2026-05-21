@@ -1,37 +1,49 @@
 # Tavlatus Architecture
 
-Tavlatus is split into a renderer-agnostic rules core and a canvas presentation layer.
+Tavlatus is a rogue-like backgammon hybrid split into a renderer-agnostic rules core and a canvas presentation layer.
 
-## `game-core.js`
+---
 
-Owns deterministic game rules and reusable data structures:
+## Core Terminology
 
-- board, pip, checker, deck relic-pip, tile, and level definitions
-- starting board construction
-- dice expansion, including doubles
-- valid target calculation
-- pass-over pip calculation
-- movement scoring math
+- **Checkers**: Pieces representing player or enemy entities.
+  - **Player Checkers**: Configured with a **Core** (Basic, Gold, Platinum, Anchor - determines base chips & vulnerability) and a **Rim** (Basic, Glass, Ruby, Prism - determines scoring multipliers).
+  - **Enemy Checkers**: Pawns (basic) and Rams (can attack gates).
+- **Pips**: The 24 standard backgammon board triangles.
+  - **Deck Pips**: The bottom 12 pips where the player can install **Relic-Pips** (modifiers like *Iron Gate*, *Haste Line*, *Ledger*, *Dealer*, *Forge*, or *Market*).
+- **Attack (Internal: Bear Off)**: The zone where player checkers score and exit the board. Also displays procedural boss panels and active enemy statistics.
+- **Allied Bar**: Re-entry area for captured player checkers.
+- **Attacked Enemies (Enemy Bar)**: Hold area for captured enemy checkers before they enter play at the start of their turn.
+- **Enemy Move Tokens**: Pentagonal intent tokens showing values for upcoming enemy moves. These tokens move the farthest enemy checker (highest index) towards the player base (index 0).
 
-This file does not read the DOM, draw to Canvas, or trigger animations. A future Three.js renderer should call this layer for legal moves and score results.
+---
 
-## `app.js`
+## `game-core.js` (Deterministic Core)
 
-Owns the current browser experience:
+Owns the game rules, mathematical formulas, and parameters:
+- **Board & Pip Init**: Sets up starting boards and level configurations.
+- **Move Generation**: Validates legal targets for dice values, including double rolls.
+- **Combat Logic**: Handles captures, hit evaluations, and glass rims shattering.
+- **Scoring Formulas**: Computes Chip values and Multipliers based on checkers, rims, cores, and landed modifiers.
 
-- canvas rendering
-- pointer hit detection
-- menus, drawer, tooltips, and shop interactions
-- floating score text and checker movement animations
-- mutation of the current `GameState` after core rule results are returned
+*This file is DOM-free and contains no canvas or rendering code.*
 
-The canvas app should treat `game-core.js` as the source of truth for rules, then decide how to show those results.
+---
+
+## `app.js` (Canvas Presentation & UI)
+
+Owns the client experience and browser lifecycle:
+- **Rendering Loop**: Draws the 2D canvas, including procedural animations (smooth background waves, spirographs, shop particles, coin rain).
+- **Pointer/Hit Detection**: Maps click locations to checkers, pips, buttons, and custom tooltip boundaries.
+- **Animations**: Handles movement arcs, dislodge collision physics, camera shakes, and upgrade morphs.
+- **HUD & Shop Panels**: Manages UI state, draft selections, starting checker replacements, and the tabbed Rules/Encyclopedia glossary drawer.
+
+---
 
 ## Future Renderer Contract
 
-A future renderer should be able to:
-
-1. Create board state with `PipjackCore.createStartingBoard`.
-2. Ask for legal moves with `PipjackCore.getValidTargets`.
-3. Preview or resolve score with `PipjackCore.calculateMoveScore`.
-4. Animate however it wants using the source, target, and passed pip list from `PipjackCore.getPassedPips`.
+To replace the 2D canvas with a 3D renderer (e.g. Three.js):
+1. **Board Creation**: Build state using `PipjackCore.createStartingBoard`.
+2. **Move Options**: Fetch valid destinations via `PipjackCore.getValidTargets`.
+3. **Move Results**: Resolve score and capture changes via `PipjackCore.calculateMoveScore`.
+4. **Visual Mapping**: Path animations using source, destination, and the passed pips array from `PipjackCore.getPassedPips`.
