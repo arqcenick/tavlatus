@@ -1380,12 +1380,7 @@ const canvas = document.getElementById("gameCanvas");
       if (clickedCheckerArea) {
         const source = findCheckerSource(clickedCheckerArea.checker.id);
         if (source !== null) {
-          // If we have a selection and the clicked checker's location is a valid target, we move there!
-          if (GameState.selected && typeof source === "number" && GameState.validTargets.some(t => t.type === "pip" && t.index === source)) {
-            moveSelectedTo(source);
-            return;
-          }
-          // Otherwise, select this checker
+          // Select this checker directly
           if (GameState.turnPhase === TurnPhase.MOVING && GameState.bar.player.length > 0 && source !== "bar") {
             GameState.message = "A checker is on the bar. Click one of the highlighted re-enter pips.";
             return;
