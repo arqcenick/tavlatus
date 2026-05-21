@@ -117,9 +117,28 @@
     [CheckerType.SPRINTER]: Object.freeze({ chips: 0, mult: 1 })
   });
 
+  function getCoreChips(core) {
+    if (core === "gold") return 50;
+    if (core === "platinum") return 100;
+    return 10; // basic, anchor
+  }
+
+  function getRimMult(rim) {
+    if (rim === "glass") return 2;
+    if (rim === "ruby") return 3;
+    if (rim === "prism") return 5;
+    return 1; // basic
+  }
+
+  function recalculateCheckerStats(checker) {
+    if (checker.owner !== "player") return;
+    checker.chips = getCoreChips(checker.core);
+    checker.mult = getRimMult(checker.rim);
+  }
+
   function createChecker(id, owner, type = CheckerType.STANDARD) {
     const stats = checkerBaseStats[type] || checkerBaseStats[CheckerType.STANDARD];
-    return {
+    const checker = {
       id,
       owner,
       type,
@@ -128,6 +147,29 @@
       ability: null,
       destroyed: false
     };
+    if (owner === "player") {
+      if (type === CheckerType.GOLDEN) {
+        checker.core = "gold";
+        checker.rim = "basic";
+      } else if (type === CheckerType.GLASS) {
+        checker.core = "basic";
+        checker.rim = "glass";
+      } else if (type === CheckerType.ANCHOR) {
+        checker.core = "anchor";
+        checker.rim = "basic";
+      } else if (type === CheckerType.RUBY) {
+        checker.core = "basic";
+        checker.rim = "ruby";
+      } else if (type === CheckerType.PRISM) {
+        checker.core = "basic";
+        checker.rim = "prism";
+      } else {
+        checker.core = "basic";
+        checker.rim = "basic";
+      }
+      recalculateCheckerStats(checker);
+    }
+    return checker;
   }
 
   function createPip(index) {
@@ -315,22 +357,28 @@
       notes.push(`+${alliedBonus} allied stack`);
     }
 
-    if (checker.chips) {
-      chips += checker.chips;
-      parts.push(`${checker.chips} ${checker.type}`);
-      notes.push(`+${checker.chips} ${checker.type}`);
-    }
-
-    if (checker.mult && checker.mult !== 1) {
-      mult *= checker.mult;
-      parts.push(`x${formatNumber(checker.mult)} ${checker.type}`);
-      notes.push(`x${formatNumber(checker.mult)} ${checker.type}`);
-    }
-
-    if (checker.type === CheckerType.SPRINTER && die >= 5) {
-      chips += 120;
-      parts.push("120 sprinter");
-      notes.push("+120 sprinter");
+    if (checker.owner === "player") {
+      if (checker.chips) {
+        chips += checker.chips;
+        parts.push(`${checker.chips} core`);
+        notes.push(`+${checker.chips} ${checker.core} core`);
+      }
+      if (checker.mult && checker.mult !== 1) {
+        mult *= checker.mult;
+        parts.push(`x${formatNumber(checker.mult)} rim`);
+        notes.push(`x${formatNumber(checker.mult)} ${checker.rim} rim`);
+      }
+    } else {
+      if (checker.chips) {
+        chips += checker.chips;
+        parts.push(`${checker.chips} enemy`);
+        notes.push(`+${checker.chips} enemy`);
+      }
+      if (checker.mult && checker.mult !== 1) {
+        mult *= checker.mult;
+        parts.push(`x${formatNumber(checker.mult)} enemy`);
+        notes.push(`x${formatNumber(checker.mult)} enemy`);
+      }
     }
 
     const passOver = calculatePassOverEffects({ board, passedPips });
@@ -387,11 +435,44 @@
     };
   }
 
+  function applyCheckerUpgrade(checker, upgradeType, upgradeValue) {
+    if (upgradeType === "core") {
+      checker.core = upgradeValue;
+    } else if (upgradeType === "rim") {
+      checker.rim = upgradeValue;
+    }
+    recalculateCheckerStats(checker);
+    return checker;
+  }
+
   function applyCheckerType(checker, type) {
-    const stats = checkerBaseStats[type] || checkerBaseStats[CheckerType.STANDARD];
     checker.type = type;
-    checker.chips = stats.chips;
-    checker.mult = stats.mult;
+    if (checker.owner === "player") {
+      if (type === CheckerType.GOLDEN) {
+        checker.core = "gold";
+        checker.rim = "basic";
+      } else if (type === CheckerType.GLASS) {
+        checker.core = "basic";
+        checker.rim = "glass";
+      } else if (type === CheckerType.ANCHOR) {
+        checker.core = "anchor";
+        checker.rim = "basic";
+      } else if (type === CheckerType.RUBY) {
+        checker.core = "basic";
+        checker.rim = "ruby";
+      } else if (type === CheckerType.PRISM) {
+        checker.core = "basic";
+        checker.rim = "prism";
+      } else {
+        checker.core = "basic";
+        checker.rim = "basic";
+      }
+      recalculateCheckerStats(checker);
+    } else {
+      const stats = checkerBaseStats[type] || checkerBaseStats[CheckerType.STANDARD];
+      checker.chips = stats.chips;
+      checker.mult = stats.mult;
+    }
     return checker;
   }
 
@@ -418,6 +499,7 @@
     calculatePassOverEffects,
     calculateMoveScore,
     applyCheckerType,
+    applyCheckerUpgrade,
     formatNumber
   });
 })(window);

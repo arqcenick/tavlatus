@@ -46,7 +46,7 @@ const canvas = document.getElementById("gameCanvas");
       boardPaddingX: 30,
       boardPaddingY: 28,
       pipGap: 6,
-      checkerRadius: 30
+      checkerRadius: 34.5
     };
 
     let nextCheckerId = 1;
@@ -74,7 +74,7 @@ const canvas = document.getElementById("gameCanvas");
       validTargets: [],
       runUpgrades: {
         deckPips: {},
-        checkerTypes: []
+        checkerUpgrades: []
       },
       levelIndex: 0,
       levelConfig: LevelConfig,
@@ -130,7 +130,7 @@ const canvas = document.getElementById("gameCanvas");
         clearTimeout(autoRollTimer);
         autoRollTimer = null;
       }
-      const keptUpgrades = preserveRun ? GameState.runUpgrades : { deckPips: {}, checkerTypes: [] };
+      const keptUpgrades = preserveRun ? GameState.runUpgrades : { deckPips: {}, checkerUpgrades: [] };
       const keptMoney = preserveRun ? GameState.money : 0;
       const level = LevelConfig[levelIndex];
 
@@ -247,45 +247,45 @@ const canvas = document.getElementById("gameCanvas");
       const upgradePool = [
         {
           kind: "upgrade",
-          title: "Golden Top",
-          detail: "Upgrade a top white checker to +50 Chips.",
+          title: "Gold Core",
+          detail: "Upgrade a top checker's core to Gold (+50 Chips).",
           price: 3,
-          checkerType: CheckerType.GOLDEN
+          upgrade: { type: "core", value: "gold" }
         },
         {
           kind: "upgrade",
-          title: "Glass Top",
-          detail: "Upgrade a top white checker to x3 Mult.",
+          title: "Platinum Core",
+          detail: "Upgrade a top checker's core to Platinum (+100 Chips).",
+          price: 5,
+          upgrade: { type: "core", value: "platinum" }
+        },
+        {
+          kind: "upgrade",
+          title: "Anchor Core",
+          detail: "Upgrade a top checker's core to Anchor (invulnerable).",
           price: 4,
-          checkerType: CheckerType.GLASS
+          upgrade: { type: "core", value: "anchor" }
         },
         {
           kind: "upgrade",
-          title: "Anchor Top",
-          detail: "Upgrade a top white checker so hazards ignore it.",
+          title: "Glass Rim",
+          detail: "Upgrade a top checker's rim to Glass (x2 Mult, shatters easily).",
           price: 3,
-          checkerType: CheckerType.ANCHOR
+          upgrade: { type: "rim", value: "glass" }
         },
         {
           kind: "upgrade",
-          title: "Ruby Top",
-          detail: "Upgrade a top white checker to +100 Chips.",
-          price: 5,
-          checkerType: CheckerType.RUBY
-        },
-        {
-          kind: "upgrade",
-          title: "Prism Top",
-          detail: "Upgrade a top white checker to +25 Chips and x2 Mult.",
-          price: 5,
-          checkerType: CheckerType.PRISM
-        },
-        {
-          kind: "upgrade",
-          title: "Sprinter Top",
-          detail: "Upgrade a top white checker to +120 Chips on die 5 or 6.",
+          title: "Ruby Rim",
+          detail: "Upgrade a top checker's rim to Ruby (x3 Mult).",
           price: 4,
-          checkerType: CheckerType.SPRINTER
+          upgrade: { type: "rim", value: "ruby" }
+        },
+        {
+          kind: "upgrade",
+          title: "Prism Rim",
+          detail: "Upgrade a top checker's rim to Prism (x5 Mult).",
+          price: 6,
+          upgrade: { type: "rim", value: "prism" }
         }
       ];
 
@@ -317,7 +317,7 @@ const canvas = document.getElementById("gameCanvas");
       offer.bought = true;
       GameState.storePurchases += 1;
       if (offer.kind === "pip") startDeckPlacement(offer);
-      if (offer.kind === "upgrade") addCheckerUpgrade(offer.checkerType);
+      if (offer.kind === "upgrade") addCheckerUpgrade(offer.upgrade);
       if (offer.kind !== "pip") GameState.message = `${offer.title} purchased for ${price} Akçe.`;
     }
 
@@ -325,9 +325,9 @@ const canvas = document.getElementById("gameCanvas");
       return Math.max(1, offer.price);
     }
 
-    function addCheckerUpgrade(type) {
-      GameState.runUpgrades.checkerTypes.push(type);
-      upgradeTopPlayerChecker(type);
+    function addCheckerUpgrade(upgrade) {
+      GameState.runUpgrades.checkerUpgrades.push(upgrade);
+      upgradeTopPlayerChecker(upgrade);
     }
 
     function startDeckPlacement(offer) {
@@ -389,8 +389,8 @@ const canvas = document.getElementById("gameCanvas");
         if (modifier) installTileModifier(modifier, Number(pipIndex));
       }
 
-      for (const checkerType of GameState.runUpgrades.checkerTypes) {
-        upgradeTopPlayerChecker(checkerType);
+      for (const upgrade of GameState.runUpgrades.checkerUpgrades || []) {
+        upgradeTopPlayerChecker(upgrade);
       }
     }
 
@@ -555,6 +555,29 @@ const canvas = document.getElementById("gameCanvas");
           break;
         }
 
+        // Pass-over shatter detection: if step moved by 2, check intermediate pip
+        if (currentSource - result.destination === 2) {
+          const intermediatePipIndex = currentSource - 1;
+          const intermediatePip = GameState.board[intermediatePipIndex];
+          if (intermediatePip && intermediatePip.playerPieces.length > 0) {
+            for (let i = intermediatePip.playerPieces.length - 1; i >= 0; i--) {
+              const pc = intermediatePip.playerPieces[i];
+              if (pc.rim === "glass" && pc.core !== "anchor") {
+                intermediatePip.playerPieces.splice(i, 1);
+                pc.destroyed = true;
+                GameState.destroyed.push(pc);
+                addFloatingText(
+                  getPipCenter(intermediatePipIndex).x,
+                  getPipCenter(intermediatePipIndex).y,
+                  "Glass shattered (passed over)",
+                  Theme.blue,
+                  0.9
+                );
+              }
+            }
+          }
+        }
+
         currentSource = result.destination;
         pushed += result.pushed ? 1 : 0;
         path.push(getPipCenter(currentSource));
@@ -593,16 +616,22 @@ const canvas = document.getElementById("gameCanvas");
         const victimIndex = findRamVictimIndex(targetPip);
         if (victimIndex === -1) return { type: "blocked" };
         const [victim] = targetPip.playerPieces.splice(victimIndex, 1);
-        GameState.bar.player.push(victim);
-        pushed = true;
-        addFloatingText(getPipCenter(destination).x, getPipCenter(destination).y, "Ram push", Theme.danger, 0.9);
+        if (victim.rim === "glass") {
+          victim.destroyed = true;
+          GameState.destroyed.push(victim);
+          addFloatingText(getPipCenter(destination).x, getPipCenter(destination).y, "Glass shattered (pushed)", Theme.blue, 0.9);
+        } else {
+          GameState.bar.player.push(victim);
+          pushed = true;
+          addFloatingText(getPipCenter(destination).x, getPipCenter(destination).y, "Ram push", Theme.danger, 0.9);
+        }
       } else if (targetPip.playerPieces.length === 1) {
         const victim = targetPip.playerPieces.pop();
-        if (victim.type === CheckerType.ANCHOR) {
+        if (victim.core === "anchor") {
           targetPip.playerPieces.push(victim);
           return { type: "blocked" };
         }
-        if (victim.type === CheckerType.GLASS) {
+        if (victim.rim === "glass") {
           victim.destroyed = true;
           GameState.destroyed.push(victim);
           addFloatingText(getPipCenter(destination).x, getPipCenter(destination).y, "Glass shattered", Theme.blue, 0.9);
@@ -617,7 +646,7 @@ const canvas = document.getElementById("gameCanvas");
 
     function findRamVictimIndex(pip) {
       for (let i = pip.playerPieces.length - 1; i >= 0; i--) {
-        if (pip.playerPieces[i].type !== CheckerType.ANCHOR) return i;
+        if (pip.playerPieces[i].core !== "anchor") return i;
       }
       return -1;
     }
@@ -999,12 +1028,12 @@ const canvas = document.getElementById("gameCanvas");
       }
     }
 
-    function upgradeTopPlayerChecker(type) {
+    function upgradeTopPlayerChecker(upgrade) {
       for (const pip of GameState.board) {
         if (pip.playerPieces.length === 0) continue;
         const checker = pip.playerPieces[pip.playerPieces.length - 1];
-        Core.applyCheckerType(checker, type);
-        GameState.message = `Top checker on Pip ${pip.index + 1} is now ${type}.`;
+        Core.applyCheckerUpgrade(checker, upgrade.type, upgrade.value);
+        GameState.message = `Top checker on Pip ${pip.index + 1} upgraded: ${upgrade.type} is now ${upgrade.value}.`;
         return;
       }
     }
@@ -1783,7 +1812,7 @@ const canvas = document.getElementById("gameCanvas");
       const isGate = targetPip.playerPieces.length >= 2;
       const isRam = getEnemyAbility(checker) === EnemyAbility.RAM;
       if (isGate && !(isRam && distance === 2 && findRamVictimIndex(targetPip) !== -1)) return { type: "blocked" };
-      if (targetPip.playerPieces.length === 1 && targetPip.playerPieces[0].type === CheckerType.ANCHOR) return { type: "blocked" };
+      if (targetPip.playerPieces.length === 1 && targetPip.playerPieces[0].core === "anchor") return { type: "blocked" };
       return { type: "pip", destination };
     }
 
@@ -1838,7 +1867,7 @@ const canvas = document.getElementById("gameCanvas");
       ctx.arc(cx, cy, radius * 0.91, 0, Math.PI * 2);
       ctx.fill();
 
-      drawTokenRimMarks(cx, cy, radius, palette);
+      drawTokenRimMarks(cx, cy, radius, palette, checker);
 
       const topGradient = ctx.createRadialGradient(cx - radius * 0.25, cy - radius * 0.30, radius * 0.04, cx, cy, radius * 0.78);
       topGradient.addColorStop(0, palette.light);
@@ -1882,13 +1911,36 @@ const canvas = document.getElementById("gameCanvas");
           ctx.fillText("R", cx, cy + radius * 0.38);
         }
       } else {
-        drawCheckerGlyph(cx, cy, radius, checker.type, palette);
+        drawCheckerGlyph(cx, cy, radius, checker, palette);
       }
 
       ctx.restore();
     }
 
-    function drawTokenRimMarks(cx, cy, radius, palette) {
+    function drawTokenRimMarks(cx, cy, radius, palette, checker) {
+      if (checker && checker.rim === "prism") {
+        ctx.save();
+        ctx.lineWidth = Math.max(1.5, radius * 0.06);
+        ctx.lineCap = "round";
+        const time = performance.now() / 1000;
+        const speed = 0.5;
+        const angleOffset = time * speed * Math.PI * 2;
+
+        for (let i = 0; i < 8; i++) {
+          const angle = (Math.PI * 2 * i) / 8 + angleOffset;
+          const hue = (i * 360 / 8 + time * 90) % 360;
+          ctx.strokeStyle = `hsla(${hue}, 85%, 65%, 0.95)`;
+          const inner = radius * 0.74;
+          const outer = radius * 0.89;
+          ctx.beginPath();
+          ctx.moveTo(cx + Math.cos(angle) * inner, cy + Math.sin(angle) * inner);
+          ctx.lineTo(cx + Math.cos(angle) * outer, cy + Math.sin(angle) * outer);
+          ctx.stroke();
+        }
+        ctx.restore();
+        return;
+      }
+
       ctx.save();
       ctx.strokeStyle = palette.mark || "rgba(246,223,170,0.72)";
       ctx.lineWidth = Math.max(1, radius * 0.045);
@@ -3236,20 +3288,30 @@ const canvas = document.getElementById("gameCanvas");
         };
       }
 
-      const typeText = {
-        [CheckerType.STANDARD]: "Standard checker: no bonus stats.",
-        [CheckerType.GOLDEN]: "Golden checker: +50 flat Chips whenever moved.",
-        [CheckerType.GLASS]: "Glass checker: x3 Mult when moved, but shatters if destroyed by a hazard.",
-        [CheckerType.ANCHOR]: "Anchor checker: cannot be targeted or destroyed by enemy intents.",
-        [CheckerType.RUBY]: "Ruby checker: +100 flat Chips whenever moved.",
-        [CheckerType.PRISM]: "Prism checker: +25 Chips and x2 Mult whenever moved.",
-        [CheckerType.SPRINTER]: "Sprinter checker: +120 Chips when moved with a die value of 5 or 6."
+      function getCheckerName(checker) {
+        if (checker.core === "basic" && checker.rim === "basic") {
+          return "Basic Checker";
+        }
+        return `${capitalize(checker.core || "basic")} Core, ${capitalize(checker.rim || "basic")} Rim`;
+      }
+
+      const coreDesc = {
+        basic: "Basic Core (+10 Chips)",
+        gold: "Gold Core (+50 Chips)",
+        platinum: "Platinum Core (+100 Chips)",
+        anchor: "Anchor Core (+10 Chips, invulnerable)"
+      };
+      const rimDesc = {
+        basic: "Basic Rim (x1 Mult)",
+        glass: "Glass Rim (x2 Mult, shatters if landed on or passed over)",
+        ruby: "Ruby Rim (x3 Mult)",
+        prism: "Prism Rim (x5 Mult)"
       };
 
       return {
         kind: "checker",
-        title: `${capitalize(checker.type)} White Checker`,
-        body: `${typeText[checker.type]} Current stats: +${checker.chips} Chips, x${formatNumber(checker.mult)} Mult.`
+        title: `${getCheckerName(checker)} White Checker`,
+        body: `${coreDesc[checker.core || "basic"]} & ${rimDesc[checker.rim || "basic"]}. Current stats: +${checker.chips} Chips, x${formatNumber(checker.mult)} Mult.`
       };
     }
 
@@ -3596,16 +3658,16 @@ const canvas = document.getElementById("gameCanvas");
       return value.charAt(0).toUpperCase() + value.slice(1);
     }
 
-    function getCheckerAccent(type) {
+    function getCheckerAccent(checker) {
+      if (!checker) return Theme.muted;
       const colors = {
-        [CheckerType.GOLDEN]: Theme.gold,
-        [CheckerType.GLASS]: Theme.blue,
-        [CheckerType.ANCHOR]: Theme.muted,
-        [CheckerType.RUBY]: Theme.danger,
-        [CheckerType.PRISM]: Theme.purple,
-        [CheckerType.SPRINTER]: Theme.accent
+        gold: Theme.gold,
+        glass: Theme.blue,
+        anchor: Theme.muted,
+        ruby: Theme.danger,
+        prism: Theme.purple
       };
-      return colors[type] || Theme.muted;
+      return colors[checker.rim] || colors[checker.core] || Theme.muted;
     }
 
     function getCheckerPalette(owner, checker) {
@@ -3624,94 +3686,82 @@ const canvas = document.getElementById("gameCanvas");
         };
       }
 
-      const palettes = {
-        [CheckerType.STANDARD]: {
+      const corePart = (checker && checker.core) || "basic";
+      const rimPart = (checker && checker.rim) || "basic";
+
+      const corePalettes = {
+        basic: {
           light: "#fff4cf",
           base: Theme.player,
           mid: "#c8b183",
           dark: "#725d3c",
           edge: Theme.playerEdge,
-          rim: "#d4b374",
-          rimLight: "#fff0bd",
-          mark: "rgba(76,58,38,0.54)",
-          glyph: "#5d4a31",
-          shadow: "#050809"
+          glyph: "#5d4a31"
         },
-        [CheckerType.GOLDEN]: {
+        gold: {
           light: "#fff0a5",
           base: Theme.gold,
           mid: "#b77a2e",
           dark: "#70431b",
           edge: "#3e2410",
-          rim: "#d18b35",
-          rimLight: "#fff0a5",
-          mark: "rgba(62,36,16,0.52)",
-          glyph: "#6a4318",
-          shadow: "#050809"
+          glyph: "#6a4318"
         },
-        [CheckerType.GLASS]: {
-          light: "#dcfffb",
-          base: "#54c9c4",
-          mid: "#218d91",
-          dark: "#0d4b52",
-          edge: "#07262c",
-          rim: "#d4b374",
-          rimLight: "#fff0bd",
-          mark: "rgba(7,38,44,0.52)",
-          glyph: "#07535a",
-          shadow: "#050809"
+        platinum: {
+          light: "#ffffff",
+          base: "#e5e8eb",
+          mid: "#b0b7bd",
+          dark: "#6c7780",
+          edge: "#384047",
+          glyph: "#464d52"
         },
-        [CheckerType.ANCHOR]: {
+        anchor: {
           light: "#eee3c9",
           base: "#aaa899",
           mid: "#74776c",
           dark: "#3f4945",
           edge: "#18211f",
-          rim: "#a48a5c",
-          rimLight: "#e6d5aa",
-          mark: "rgba(24,33,31,0.50)",
-          glyph: "#26312e",
-          shadow: "#050809"
-        },
-        [CheckerType.RUBY]: {
-          light: "#e79a9a",
-          base: "#b62f42",
-          mid: "#7f2436",
-          dark: "#461621",
-          edge: "#260b12",
-          rim: "#d4b374",
-          rimLight: "#fff0bd",
-          mark: "rgba(38,11,18,0.46)",
-          glyph: "#5b1623",
-          shadow: "#050809"
-        },
-        [CheckerType.PRISM]: {
-          light: "#ead4ec",
-          base: "#9c6aa0",
-          mid: "#744a80",
-          dark: "#392541",
-          edge: "#1c1322",
-          rim: "#d4b374",
-          rimLight: "#fff0bd",
-          mark: "rgba(28,19,34,0.46)",
-          glyph: "#4a2f55",
-          shadow: "#050809"
-        },
-        [CheckerType.SPRINTER]: {
-          light: "#e4ffd4",
-          base: "#a1c982",
-          mid: "#648d57",
-          dark: "#345536",
-          edge: "#172717",
-          rim: "#d4b374",
-          rimLight: "#fff0bd",
-          mark: "rgba(23,39,23,0.50)",
-          glyph: "#284723",
-          shadow: "#050809"
+          glyph: "#26312e"
         }
       };
 
-      return palettes[checker.type] || palettes[CheckerType.STANDARD];
+      const rimPalettes = {
+        basic: {
+          rim: "#d4b374",
+          rimLight: "#fff0bd",
+          mark: "rgba(76,58,38,0.54)"
+        },
+        glass: {
+          rim: "#54c9c4",
+          rimLight: "#dcfffb",
+          mark: "rgba(13,75,82,0.64)"
+        },
+        ruby: {
+          rim: "#b62f42",
+          rimLight: "#e79a9a",
+          mark: "rgba(70,22,33,0.54)"
+        },
+        prism: {
+          rim: "#a254c9",
+          rimLight: "#f4dcff",
+          mark: "rgba(57,37,65,0.64)"
+        }
+      };
+
+      const cPal = corePalettes[corePart] || corePalettes.basic;
+      const rPal = rimPalettes[rimPart] || rimPalettes.basic;
+
+      return {
+        light: cPal.light,
+        base: cPal.base,
+        mid: cPal.mid,
+        dark: cPal.dark,
+        edge: cPal.edge,
+        glyph: cPal.glyph,
+        rim: rPal.rim,
+        rimLight: rPal.rimLight,
+        mark: rPal.mark,
+        shadow: "#050809"
+      };
     }
 
     function drawSwordIcon(cx, cy, radius) {
@@ -3942,7 +3992,7 @@ const canvas = document.getElementById("gameCanvas");
       }
     }
 
-    function drawCheckerGlyph(cx, cy, radius, type, palette) {
+    function drawCheckerGlyph(cx, cy, radius, checker, palette) {
       const g = radius * 0.34;
       ctx.save();
       ctx.strokeStyle = palette.edge;
@@ -3952,7 +4002,9 @@ const canvas = document.getElementById("gameCanvas");
       ctx.lineJoin = "round";
       ctx.globalAlpha = 0.78;
 
-      if (type === CheckerType.STANDARD) {
+      const coreType = checker ? checker.core : "basic";
+
+      if (coreType === "basic") {
         ctx.beginPath();
         ctx.moveTo(cx, cy - g * 0.95);
         ctx.lineTo(cx, cy + g * 0.72);
@@ -3968,15 +4020,15 @@ const canvas = document.getElementById("gameCanvas");
         ctx.lineTo(cx + g * 0.62, cy - g * 0.20);
         ctx.stroke();
 
-      } else if (type === CheckerType.GOLDEN) {
+      } else if (coreType === "gold") {
         ctx.beginPath();
         for (let i = 0; i < 5; i++) {
           const outer = (i / 5) * Math.PI * 2 - Math.PI / 2;
           const inner = outer + Math.PI / 5;
-          const ox = cx + Math.cos(outer) * g;
-          const oy = cy + Math.sin(outer) * g;
-          const ix = cx + Math.cos(inner) * g * 0.42;
-          const iy = cy + Math.sin(inner) * g * 0.42;
+          const ox = cx + Math.cos(outer) * g * 1.1;
+          const oy = cy + Math.sin(outer) * g * 1.1;
+          const ix = cx + Math.cos(inner) * g * 0.46;
+          const iy = cy + Math.sin(inner) * g * 0.46;
           if (i === 0) ctx.moveTo(ox, oy); else ctx.lineTo(ox, oy);
           ctx.lineTo(ix, iy);
         }
@@ -3984,17 +4036,26 @@ const canvas = document.getElementById("gameCanvas");
         ctx.fill();
         ctx.stroke();
 
-      } else if (type === CheckerType.GLASS) {
+      } else if (coreType === "platinum") {
         ctx.beginPath();
-        ctx.moveTo(cx, cy - g);
-        ctx.lineTo(cx + g * 0.72, cy);
-        ctx.lineTo(cx, cy + g);
-        ctx.lineTo(cx - g * 0.72, cy);
+        ctx.moveTo(cx - g * 0.8, cy + g * 0.5);
+        ctx.lineTo(cx + g * 0.8, cy + g * 0.5);
+        ctx.lineTo(cx + g * 0.9, cy - g * 0.3);
+        ctx.lineTo(cx + g * 0.4, cy - g * 0.05);
+        ctx.lineTo(cx, cy - g * 0.7);
+        ctx.lineTo(cx - g * 0.4, cy - g * 0.05);
+        ctx.lineTo(cx - g * 0.9, cy - g * 0.3);
         ctx.closePath();
         ctx.fill();
         ctx.stroke();
 
-      } else if (type === CheckerType.ANCHOR) {
+        ctx.beginPath();
+        ctx.arc(cx - g * 0.9, cy - g * 0.3, g * 0.15, 0, Math.PI * 2);
+        ctx.arc(cx, cy - g * 0.7, g * 0.15, 0, Math.PI * 2);
+        ctx.arc(cx + g * 0.9, cy - g * 0.3, g * 0.15, 0, Math.PI * 2);
+        ctx.fill();
+
+      } else if (coreType === "anchor") {
         ctx.beginPath();
         ctx.moveTo(cx, cy - g * 0.9);
         ctx.lineTo(cx, cy + g * 0.9);
@@ -4009,39 +4070,6 @@ const canvas = document.getElementById("gameCanvas");
         ctx.beginPath();
         ctx.arc(cx, cy - g * 0.9, g * 0.2, 0, Math.PI * 2);
         ctx.fill();
-
-      } else if (type === CheckerType.RUBY) {
-        ctx.beginPath();
-        for (let i = 0; i < 6; i++) {
-          const a = (i / 6) * Math.PI * 2 - Math.PI / 6;
-          const px = cx + Math.cos(a) * g * 0.82;
-          const py = cy + Math.sin(a) * g * 0.82;
-          if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
-        }
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-
-      } else if (type === CheckerType.PRISM) {
-        ctx.beginPath();
-        ctx.moveTo(cx, cy - g);
-        ctx.lineTo(cx + g * 0.88, cy + g * 0.5);
-        ctx.lineTo(cx - g * 0.88, cy + g * 0.5);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-
-      } else if (type === CheckerType.SPRINTER) {
-        ctx.beginPath();
-        ctx.moveTo(cx + g * 0.22, cy - g);
-        ctx.lineTo(cx - g * 0.08, cy - g * 0.05);
-        ctx.lineTo(cx + g * 0.3, cy - g * 0.05);
-        ctx.lineTo(cx - g * 0.22, cy + g);
-        ctx.lineTo(cx + g * 0.06, cy + g * 0.08);
-        ctx.lineTo(cx - g * 0.3, cy + g * 0.08);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
       }
 
       ctx.restore();
