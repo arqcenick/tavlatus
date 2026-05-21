@@ -46,7 +46,7 @@ const canvas = document.getElementById("gameCanvas");
       boardPaddingX: 30,
       boardPaddingY: 28,
       pipGap: 6,
-      checkerRadius: 34.5
+      checkerRadius: 36
     };
 
     let nextCheckerId = 1;
