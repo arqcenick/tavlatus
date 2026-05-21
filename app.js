@@ -1034,6 +1034,9 @@ const canvas = document.getElementById("gameCanvas");
       updateDiceBodies();
       updateFloatingTexts();
       updateScoreBursts();
+      if (GameState.akceDisplayScale > 1.0) {
+        GameState.akceDisplayScale = Math.max(1.0, GameState.akceDisplayScale - 0.025);
+      }
 
       const { width, height } = getCanvasSize();
       GameState.buttons = [];
@@ -1226,6 +1229,35 @@ const canvas = document.getElementById("gameCanvas");
 
       drawBar(barX, innerTop, barWidth, innerHeight);
       drawBearOff(bearOffX, innerTop, innerHeight, bearOffWidth);
+
+      if (GameState.deckPlacement) {
+        ctx.save();
+        
+        // 1. Dim the enemy's top half of the board
+        ctx.fillStyle = "rgba(3, 8, 11, 0.70)";
+        // Dim top half of left table
+        roundRect(leftTableX - 4, innerTop - 8, tableWidth + 8, innerHeight / 2 + 8, 6);
+        ctx.fill();
+        // Dim top half of right table
+        roundRect(rightTableX - 4, innerTop - 8, tableWidth + 8, innerHeight / 2 + 8, 6);
+        ctx.fill();
+
+        // 2. Highlight the bottom 12 deck pips with pulsing bounding borders
+        const pulse = 0.52 + Math.sin(performance.now() / 220) * 0.22;
+        ctx.strokeStyle = `rgba(228, 183, 90, ${pulse})`;
+        ctx.lineWidth = 2.5;
+        ctx.shadowColor = "rgba(228, 183, 90, 0.46)";
+        ctx.shadowBlur = 12;
+        
+        // Bounding border around bottom half of left table
+        roundRect(leftTableX - 6, innerTop + innerHeight / 2 - 4, tableWidth + 12, innerHeight / 2 + 10, 6);
+        ctx.stroke();
+        // Bounding border around bottom half of right table
+        roundRect(rightTableX - 6, innerTop + innerHeight / 2 - 4, tableWidth + 12, innerHeight / 2 + 10, 6);
+        ctx.stroke();
+
+        ctx.restore();
+      }
     }
 
     function drawArtDecoCorners(x, y, width, height, size) {
@@ -1434,23 +1466,48 @@ const canvas = document.getElementById("gameCanvas");
 
       if (placingDeckPip) {
         ctx.save();
-        ctx.beginPath();
-        ctx.moveTo(x, baseY);
-        ctx.lineTo(x + width, baseY);
-        ctx.lineTo(x + width / 2, tipY);
-        ctx.closePath();
         if (!isDeckSlot) {
+          ctx.beginPath();
+          ctx.moveTo(x, baseY);
+          ctx.lineTo(x + width, baseY);
+          ctx.lineTo(x + width / 2, tipY);
+          ctx.closePath();
           ctx.fillStyle = "rgba(7, 9, 10, 0.90)";
           ctx.fill();
           ctx.strokeStyle = "rgba(143,176,164,0.32)";
           ctx.lineWidth = 1.5;
           ctx.stroke();
         } else {
+          // Hover glowing preview halo/glow behind the slot
+          if (isHoveringDeckSlot) {
+            ctx.save();
+            ctx.shadowColor = Theme.valid;
+            ctx.shadowBlur = 18;
+            ctx.fillStyle = "rgba(112, 227, 95, 0.18)";
+            ctx.beginPath();
+            ctx.moveTo(x - 2, baseY + (direction === "up" ? 2 : -2));
+            ctx.lineTo(x + width + 2, baseY + (direction === "up" ? 2 : -2));
+            ctx.lineTo(x + width / 2, tipY + (direction === "up" ? -2 : 2));
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+          }
+
+          // Fill of the active placement slot
           ctx.fillStyle = isHoveringDeckSlot ? "rgba(112,227,95,0.16)" : "rgba(37,185,201,0.08)";
+          ctx.beginPath();
+          ctx.moveTo(x, baseY);
+          ctx.lineTo(x + width, baseY);
+          ctx.lineTo(x + width / 2, tipY);
+          ctx.closePath();
           ctx.fill();
-          ctx.strokeStyle = isHoveringDeckSlot ? Theme.valid : "rgba(112,227,95,0.32)";
-          ctx.lineWidth = isHoveringDeckSlot ? 3 : 1.6;
+
+          // Dashed slot outline border
+          ctx.strokeStyle = isHoveringDeckSlot ? Theme.valid : "rgba(112, 227, 95, 0.42)";
+          ctx.lineWidth = isHoveringDeckSlot ? 2.5 : 1.4;
+          ctx.setLineDash([5, 4]);
           ctx.stroke();
+          ctx.setLineDash([]);
         }
         ctx.restore();
       }
@@ -2042,13 +2099,32 @@ const canvas = document.getElementById("gameCanvas");
       ctx.textBaseline = "middle";
       ctx.fillText(label.toUpperCase(), x + 12, y + 15);
 
+      const isAkce = iconKind === "akce";
+      const scaleActive = isAkce && GameState.akceDisplayScale > 1.0;
+
+      if (scaleActive) {
+        ctx.save();
+        const scale = GameState.akceDisplayScale;
+        const textWidth = ctx.measureText(value).width;
+        const totalW = textWidth + 14 + 10; // text + spacing + icon size
+        const cx = x + 12 + totalW / 2;
+        const cy = y + 33;
+        ctx.translate(cx, cy);
+        ctx.scale(scale, scale);
+        ctx.translate(-cx, -cy);
+      }
+
       ctx.fillStyle = color;
       ctx.font = "900 23px Georgia, serif";
       ctx.fillText(value, x + 12, y + 33);
 
-      if (iconKind === "akce") {
+      if (isAkce) {
         const valueWidth = ctx.measureText(value).width;
         drawAkceIcon(x + 12 + valueWidth + 14, y + 32, 10);
+      }
+
+      if (scaleActive) {
+        ctx.restore();
       }
 
       GameState.buttons.push({
@@ -2328,34 +2404,73 @@ const canvas = document.getElementById("gameCanvas");
       if (panelW < 560 || panelH < 420) return;
 
       ctx.save();
-      ctx.fillStyle = "rgba(3,8,11,0.62)";
+      // Backdrop dimming
+      ctx.fillStyle = "rgba(3,8,11,0.66)";
       ctx.fillRect(layout.leftMenuWidth, 0, width - layout.leftMenuWidth, height);
 
-      const gradient = ctx.createLinearGradient(x, y, x + panelW, y + panelH);
+      // Velvet radial gradient panel background
+      const gradient = ctx.createRadialGradient(x + panelW / 2, y + panelH / 2, 50, x + panelW / 2, y + panelH / 2, panelW / 2 + 100);
       gradient.addColorStop(0, "rgba(18,48,53,0.98)");
-      gradient.addColorStop(0.5, "rgba(7,16,20,0.98)");
-      gradient.addColorStop(1, "rgba(55,32,19,0.98)");
+      gradient.addColorStop(0.65, "rgba(7,16,20,0.99)");
+      gradient.addColorStop(1, "rgba(22,12,10,0.99)");
       ctx.fillStyle = gradient;
-      roundRect(x, y, panelW, panelH, 6);
+      roundRect(x, y, panelW, panelH, 8);
       ctx.fill();
+
+      // Ornate double borders
       ctx.strokeStyle = "rgba(201,138,67,0.72)";
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 2.5;
+      roundRect(x, y, panelW, panelH, 8);
       ctx.stroke();
 
+      ctx.strokeStyle = "rgba(246,223,170,0.18)";
+      ctx.lineWidth = 1;
+      roundRect(x + 5, y + 5, panelW - 10, panelH - 10, 6);
+      ctx.stroke();
+
+      // Ornate corners
+      drawArtDecoCorners(x, y, panelW, panelH, 28);
+
+      // Animate and draw gold particle motes
+      if (GameState.shopParticles && GameState.shopParticles.length) {
+        ctx.save();
+        for (const particle of GameState.shopParticles) {
+          particle.wobble += particle.wobbleSpeed;
+          particle.x += particle.vx / 100;
+          particle.y += particle.vy / 100;
+          if (particle.x < 0) particle.x = 1;
+          if (particle.x > 1) particle.x = 0;
+          if (particle.y < 0) particle.y = 1;
+          if (particle.y > 1) particle.y = 0;
+
+          const px = x + particle.x * panelW + Math.sin(particle.wobble) * 6;
+          const py = y + particle.y * panelH;
+
+          ctx.fillStyle = `rgba(246, 223, 170, ${particle.alpha})`;
+          ctx.beginPath();
+          ctx.arc(px, py, particle.size, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+
+      // Title & Akce count
       ctx.fillStyle = Theme.ink;
       ctx.textAlign = "left";
       ctx.textBaseline = "middle";
-      ctx.font = "950 38px Inter, sans-serif";
-      ctx.fillText("Shop", x + 34, y + 48);
-      ctx.font = "850 16px Inter, sans-serif";
+      ctx.font = "950 42px Inter, sans-serif";
+      ctx.fillText("✦ SHOP ✦", x + 34, y + 48);
+
       ctx.fillStyle = Theme.gold;
+      ctx.font = "900 18px Georgia, serif";
       const cashLabel = `${GameState.money} Akçe`;
-      ctx.fillText(cashLabel, x + 34, y + 82);
+      ctx.fillText(cashLabel, x + 34, y + 84);
       const cashW = ctx.measureText(cashLabel).width;
-      drawAkceIcon(x + 34 + cashW + 16, y + 82, 9);
+      drawAkceIcon(x + 34 + cashW + 16, y + 84, 10);
+
       ctx.fillStyle = Theme.muted;
-      ctx.font = "750 13px Inter, sans-serif";
-      wrapText("Buy relic-pips to place on your bottom deck pips. Piece upgrades still hit the top white checker.", x + 34, y + 106, panelW - 68, 16);
+      ctx.font = "700 13px Inter, sans-serif";
+      wrapText("Buy relic-pips to place on your bottom deck pips. Piece upgrades still hit the top white checker.", x + 34, y + 110, panelW - 68, 16);
 
       const pips = GameState.shopOffers.filter((offer) => offer.kind === "pip");
       const upgrades = GameState.shopOffers.filter((offer) => offer.kind === "upgrade");
@@ -2363,18 +2478,34 @@ const canvas = document.getElementById("gameCanvas");
       const pipCardW = (panelW - 68 - gap * 2) / 3;
       const upgradeCardW = (panelW - 68 - gap * 2) / 3;
 
-      ctx.fillStyle = Theme.muted;
+      // Header 1: RELIC-PIPS
+      ctx.fillStyle = Theme.gold;
       ctx.font = "900 13px Inter, sans-serif";
-      ctx.fillText("RELIC-PIPS", x + 34, y + 150);
+      ctx.fillText("✦  RELIC-PIPS  ✦", x + 34, y + 144);
+      ctx.strokeStyle = "rgba(201, 138, 67, 0.38)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x + 34, y + 154);
+      ctx.lineTo(x + panelW - 34, y + 154);
+      ctx.stroke();
+
       pips.forEach((offer, index) => {
-        drawShopCard(x + 34 + index * (pipCardW + gap), y + 170, pipCardW, 112, offer);
+        drawShopCard(x + 34 + index * (pipCardW + gap), y + 168, pipCardW, 126, offer);
       });
 
-      ctx.fillStyle = Theme.muted;
+      // Header 2: PIECE UPGRADES
+      ctx.fillStyle = Theme.blue;
       ctx.font = "900 13px Inter, sans-serif";
-      ctx.fillText("PIECE UPGRADES", x + 34, y + 324);
+      ctx.fillText("✦  PIECE UPGRADES  ✦", x + 34, y + 330);
+      ctx.strokeStyle = "rgba(37, 185, 201, 0.38)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x + 34, y + 340);
+      ctx.lineTo(x + panelW - 34, y + 340);
+      ctx.stroke();
+
       upgrades.forEach((offer, index) => {
-        drawShopCard(x + 34 + index * (upgradeCardW + gap), y + 344, upgradeCardW, 122, offer);
+        drawShopCard(x + 34 + index * (upgradeCardW + gap), y + 354, upgradeCardW, 136, offer);
       });
 
       drawButton(x + panelW - 214, y + panelH - 70, 180, 46, "Next Blind", advanceLevel, true, "primary");
@@ -2427,39 +2558,173 @@ const canvas = document.getElementById("gameCanvas");
     function drawShopCard(x, y, width, height, offer) {
       const price = getOfferPrice(offer);
       const affordable = GameState.money >= price;
-      const gradient = ctx.createLinearGradient(x, y, x + width, y + height);
-      gradient.addColorStop(0, offer.bought ? "#536061" : "#f2dfba");
-      gradient.addColorStop(0.55, offer.kind === "pip" ? "#d49a51" : "#80b9af");
-      gradient.addColorStop(1, offer.kind === "pip" ? "#7f2439" : "#0d6870");
-      ctx.fillStyle = gradient;
-      roundRect(x, y, width, height, 4);
-      ctx.fill();
+      const isHovered = !offer.bought && GameState.hover.active && pointInRect(GameState.hover.x, GameState.hover.y, { x, y, width, height });
+
+      ctx.save();
+
+      // Lift card and draw glow shadow if hovered
+      if (isHovered) {
+        const cx = x + width / 2;
+        const cy = y + height / 2;
+        ctx.translate(cx, cy);
+        ctx.scale(1.05, 1.05);
+        ctx.translate(-cx, -cy - 6);
+
+        ctx.save();
+        ctx.shadowColor = offer.kind === "pip" ? "rgba(228, 183, 90, 0.62)" : "rgba(37, 185, 201, 0.62)";
+        ctx.shadowBlur = 18;
+        ctx.fillStyle = "rgba(3, 8, 11, 0.4)";
+        roundRect(x - 2, y - 2, width + 4, height + 4, 6);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // Draw custom background skin
+      if (offer.kind === "pip") {
+        // Dark leather/wood gradient
+        const bgGrad = ctx.createLinearGradient(x, y, x + width, y + height);
+        bgGrad.addColorStop(0, "#1c120e");
+        bgGrad.addColorStop(0.5, "#271b15");
+        bgGrad.addColorStop(1, "#150d0a");
+        ctx.fillStyle = bgGrad;
+        roundRect(x, y, width, height, 6);
+        ctx.fill();
+
+        ctx.strokeStyle = "rgba(201, 138, 67, 0.76)";
+        ctx.lineWidth = 1.8;
+        roundRect(x + 3, y + 3, width - 6, height - 6, 4);
+        ctx.stroke();
+
+        ctx.strokeStyle = "rgba(246, 223, 170, 0.16)";
+        ctx.lineWidth = 0.8;
+        ctx.strokeRect(x + 6, y + 6, width - 12, height - 12);
+      } else {
+        // Cosmic blue gradient
+        const bgGrad = ctx.createLinearGradient(x, y, x + width, y + height);
+        bgGrad.addColorStop(0, "#081622");
+        bgGrad.addColorStop(0.5, "#0d2232");
+        bgGrad.addColorStop(1, "#050e16");
+        ctx.fillStyle = bgGrad;
+        roundRect(x, y, width, height, 6);
+        ctx.fill();
+
+        ctx.strokeStyle = "rgba(37, 185, 201, 0.76)";
+        ctx.lineWidth = 1.8;
+        roundRect(x + 3, y + 3, width - 6, height - 6, 4);
+        ctx.stroke();
+
+        // Background sparkles
+        ctx.save();
+        ctx.fillStyle = "rgba(255, 255, 255, 0.28)";
+        const sparkles = [
+          [x + width * 0.15, y + height * 0.3],
+          [x + width * 0.85, y + height * 0.25],
+          [x + width * 0.25, y + height * 0.75],
+          [x + width * 0.75, y + height * 0.8]
+        ];
+        for (const [sx, sy] of sparkles) {
+          ctx.beginPath();
+          ctx.arc(sx, sy, 0.8, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+
+      // Border and alpha for affordablity
       ctx.globalAlpha = affordable || offer.bought ? 1 : 0.58;
-      ctx.strokeStyle = offer.bought ? Theme.accent : "rgba(255,255,255,0.58)";
-      ctx.lineWidth = 2;
+      ctx.strokeStyle = offer.bought ? Theme.accent : "rgba(255, 255, 255, 0.22)";
+      ctx.lineWidth = 1;
+      roundRect(x, y, width, height, 6);
       ctx.stroke();
       ctx.globalAlpha = 1;
 
-      ctx.fillStyle = Theme.darkInk;
-      ctx.font = `${width < 260 ? "850 12px" : "900 14px"} Inter, sans-serif`;
+      // Text Title
+      ctx.fillStyle = Theme.ink;
+      ctx.font = `${width < 260 ? "850 12.5px" : "900 14px"} Georgia, serif`;
       ctx.textAlign = "left";
       ctx.textBaseline = "middle";
-      truncateText(offer.title, x + 12, y + 22, width - 70);
-      ctx.textAlign = "right";
-      const priceLabel = offer.bought ? "SOLD" : `${price} Akçe`;
-      ctx.fillText(priceLabel, x + width - 12, y + 22);
-      if (!offer.bought) {
-        const pW = ctx.measureText(priceLabel).width;
-        drawAkceIcon(x + width - 12 - pW - 10, y + 22, 7);
-      }
-      ctx.textAlign = "left";
-      ctx.fillStyle = "#5c2352";
-      ctx.font = `${width < 260 ? "700 10px" : "700 11px"} Inter, sans-serif`;
-      wrapText(offer.detail, x + 12, y + 43, width - 24, 14);
+      truncateText(offer.title, x + 12, y + 22, width - 62);
 
+      // Text Detail
+      ctx.fillStyle = Theme.muted;
+      ctx.font = `${width < 260 ? "700 10.5px" : "700 11.5px"} Inter, sans-serif`;
+      wrapText(offer.detail, x + 12, y + 43, width - 68, 14);
+
+      // Draw larger physical emblems on the right center
       if (offer.kind === "pip" && offer.modifier) {
-        drawTileModifier(offer.modifier, x + width - 28, y + height - 24, 0.82);
+        drawTileModifier(offer.modifier, x + width - 30, y + height / 2 - 10, 1.28);
+      } else if (offer.kind === "upgrade") {
+        drawChecker(x + width - 30, y + height / 2 - 10, 17, "player", { type: offer.checkerType });
       }
+
+      // Styled Pill Badge for Price
+      if (!offer.bought) {
+        const pillW = 76;
+        const pillH = 22;
+        const pillX = x + width / 2 - pillW / 2;
+        const pillY = y + height - 26;
+
+        ctx.save();
+        ctx.fillStyle = affordable ? "rgba(32, 12, 18, 0.92)" : "rgba(10, 20, 24, 0.92)";
+        ctx.strokeStyle = affordable ? "rgba(228, 183, 90, 0.9)" : "rgba(143, 176, 164, 0.4)";
+        ctx.lineWidth = 1.5;
+        roundRect(pillX, pillY, pillW, pillH, 11);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.textAlign = "left";
+        ctx.textBaseline = "middle";
+        ctx.fillStyle = affordable ? Theme.gold : Theme.muted;
+        ctx.font = "900 12px Georgia, serif";
+
+        const text = `${price}`;
+        const textW = ctx.measureText(text).width;
+        const totalContentW = textW + 4 + 12; // text + gap + icon size
+        const startX = pillX + (pillW - totalContentW) / 2;
+
+        drawAkceIcon(startX + 6, pillY + pillH / 2, 6);
+        ctx.fillText(text, startX + 16, pillY + pillH / 2 + 1);
+        ctx.restore();
+      }
+
+      // Draw diagonal SOLD ribbon
+      if (offer.bought) {
+        // Dark translucent overlay
+        ctx.fillStyle = "rgba(3, 8, 11, 0.64)";
+        roundRect(x, y, width, height, 6);
+        ctx.fill();
+
+        ctx.save();
+        ctx.beginPath();
+        roundRect(x, y, width, height, 6);
+        ctx.clip();
+
+        // Translate and rotate diagonal ribbon in top corner
+        ctx.translate(x + width - 32, y + 18);
+        ctx.rotate(Math.PI / 4);
+
+        ctx.fillStyle = "#9e244c";
+        ctx.fillRect(-60, -9, 120, 18);
+
+        ctx.strokeStyle = "#e4b75a";
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(-60, -9);
+        ctx.lineTo(60, -9);
+        ctx.moveTo(-60, 9);
+        ctx.lineTo(60, 9);
+        ctx.stroke();
+
+        ctx.fillStyle = "#f6dfaa";
+        ctx.font = "950 9.5px Inter, sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("SOLD", 0, 0.5);
+
+        ctx.restore();
+      }
+
+      ctx.restore();
 
       if (!offer.bought) {
         GameState.buttons.push({
