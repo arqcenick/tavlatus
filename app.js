@@ -5764,21 +5764,7 @@ const canvas = document.getElementById("gameCanvas");
       const coreType = checker ? checker.core : "basic";
 
       if (coreType === "basic") {
-        ctx.beginPath();
-        ctx.moveTo(cx, cy - g * 0.95);
-        ctx.lineTo(cx, cy + g * 0.72);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.arc(cx, cy + g * 0.12, g * 0.54, 0, Math.PI);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.arc(cx, cy - g * 0.95, g * 0.22, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.beginPath();
-        ctx.moveTo(cx - g * 0.62, cy - g * 0.20);
-        ctx.lineTo(cx + g * 0.62, cy - g * 0.20);
-        ctx.stroke();
-
+        // Clean face for basic checkers with no core icon
       } else if (coreType === "gold") {
         ctx.beginPath();
         for (let i = 0; i < 5; i++) {
