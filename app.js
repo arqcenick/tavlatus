@@ -1336,7 +1336,7 @@ const canvas = document.getElementById("gameCanvas");
 
       const button = GameState.buttons.find((candidate) => pointInRect(x, y, candidate));
       if (button) {
-        button.action();
+        if (button.action) button.action();
         return;
       }
 
@@ -3131,6 +3131,19 @@ const canvas = document.getElementById("gameCanvas");
         const value = tokens[i];
         const isConsumed = i < GameState.enemyMovesConsumed;
         drawPentagonToken(tokenX, tokenY, tokenSize / 2, value, isConsumed);
+
+        GameState.buttons.push({
+          x: tokenX - tokenSize / 2,
+          y: tokenY - tokenSize / 2,
+          width: tokenSize,
+          height: tokenSize,
+          action: null,
+          tooltip: {
+            kind: "enemyToken",
+            title: `Enemy Move Token (${value})`,
+            body: `During the enemy phase, this token makes their farthest checker move towards your base by its number (${value} pips).`
+          }
+        });
       }
       cursorY += tokenSize + 16;
 
