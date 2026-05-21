@@ -80,6 +80,7 @@
       rolls: 8,
       enemyMoves: 2,
       enemyRams: 1,
+      enemyTokens: [3, 3],
       bossRule: null
     },
     {
@@ -89,6 +90,7 @@
       rolls: 8,
       enemyMoves: 2,
       enemyRams: 2,
+      enemyTokens: [3, 3],
       bossRule: null
     },
     {
@@ -98,6 +100,7 @@
       rolls: 9,
       enemyMoves: 2,
       enemyRams: 3,
+      enemyTokens: [3, 3],
       bossRule: {
         id: "the_wall",
         name: "The Wall",
@@ -128,6 +131,13 @@
     if (rim === "ruby") return 3;
     if (rim === "prism") return 5;
     return 1; // basic
+  }
+
+  function getNextRimTier(rim) {
+    if (!rim || rim === "basic") return "glass";
+    if (rim === "glass") return "ruby";
+    if (rim === "ruby" || rim === "prism") return "prism";
+    return "glass";
   }
 
   function recalculateCheckerStats(checker) {
@@ -333,7 +343,7 @@
     if (borneOff) {
       chips += 250;
       parts.push("250 exit");
-      notes.push("+250 bear off");
+      notes.push("+250 attack");
     }
 
     if (brokeEnemy) {
@@ -396,8 +406,8 @@
     if (destination !== null) {
       const modifier = board[destination]?.modifier;
       if (modifier?.id === TileModifierLibrary.FORGE.id) {
-        checkerMultDelta += 1;
-        notes.push("+1 checker Mult");
+        const nextRim = getNextRimTier(checker.rim);
+        notes.push(`Forge: upgrade rim to ${nextRim}`);
       }
       if (modifier?.id === TileModifierLibrary.MARKET.id) {
         chips *= 2;
@@ -428,6 +438,7 @@
       passOver,
       globalMultDelta,
       checkerMultDelta,
+      checkerRimUpgrade: destination !== null && board[destination]?.modifier?.id === TileModifierLibrary.FORGE.id ? getNextRimTier(checker.rim) : null,
       moneyDelta: destination !== null
         && board[destination]?.modifier?.id === TileModifierLibrary.LEDGER.id
         && brokeEnemy ? 1 : 0,
@@ -500,6 +511,8 @@
     calculateMoveScore,
     applyCheckerType,
     applyCheckerUpgrade,
+    getNextRimTier,
+    recalculateCheckerStats,
     formatNumber
   });
 })(window);

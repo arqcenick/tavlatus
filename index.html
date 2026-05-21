@@ -9,9 +9,14 @@
   <script src="app.js" defer></script>
 </head>
 <body>
-  <button class="drawer-toggle" id="rulesToggle" type="button" aria-controls="rulesDrawer" aria-expanded="false">
-    Rules
-  </button>
+  <div class="top-left-controls">
+    <button class="drawer-toggle" id="rulesToggle" type="button" aria-controls="rulesDrawer" aria-expanded="false">
+      Rules
+    </button>
+    <button class="drawer-toggle" id="glossaryToggle" type="button" aria-controls="rulesDrawer" aria-expanded="false">
+      Glossary
+    </button>
+  </div>
 
   <div class="drawer-scrim" id="drawerScrim" hidden></div>
 
@@ -24,59 +29,262 @@
       <button class="drawer-close" id="rulesClose" type="button" aria-label="Close rules">Close</button>
     </div>
 
-    <h2>Score, then survive the blind.</h2>
-    <p>Dice roll automatically. Select a white checker, move by an available die, then press Win after beating the target to visit the shop.</p>
+    <div class="drawer-tabs">
+      <button class="drawer-tab active" id="rulesTabBtn" type="button" aria-controls="rulesTabContent" aria-selected="true">Rules</button>
+      <button class="drawer-tab" id="wikiTabBtn" type="button" aria-controls="wikiTabContent" aria-selected="false">Encyclopedia</button>
+    </div>
 
-    <dl>
-      <div>
-        <dt>Base move</dt>
-        <dd>Every moved checker scores <strong>10 Chips x die value</strong> before Mult.</dd>
+    <div class="tab-content is-active" id="rulesTabContent" role="tabpanel" aria-labelledby="rulesTabBtn">
+      <h2>Score, then survive the blind.</h2>
+      <p>Dice roll automatically. Select a white checker, move by an available die, then press Win after beating the target to visit the shop.</p>
+
+      <dl>
+        <div>
+          <dt>Base move</dt>
+          <dd>Every moved checker scores <strong>10 Chips x die value</strong> before Mult.</dd>
+        </div>
+        <div>
+          <dt>Scoring</dt>
+          <dd>Move Score = <strong>Chips x global Mult</strong>, then checker and tile Mult can push it higher.</dd>
+        </div>
+        <div>
+          <dt>Pass-over hooks</dt>
+          <dd>Checkers now jump pip-by-pip. Passed pips can trigger future effects before the checker lands.</dd>
+        </div>
+        <div>
+          <dt>Break</dt>
+          <dd>Land on one red checker to break it for <strong>+200 Chips</strong>.</dd>
+        </div>
+        <div>
+          <dt>Allied landing</dt>
+          <dd>Land on white checkers to gain <strong>+50 Chips</strong> for each white checker already there.</dd>
+        </div>
+        <div>
+          <dt>Attack</dt>
+          <dd>Move past pip 24 to attack and score <strong>+250 Chips</strong>.</dd>
+        </div>
+        <div>
+          <dt>Doubles</dt>
+          <dd>Rolling a double turns the matched dice into <strong>four moves</strong> of that value.</dd>
+        </div>
+        <div>
+          <dt>Payout</dt>
+          <dd>Clearing a normal blind pays <strong>3 Akçe</strong>, the boss pays <strong>5 Akçe</strong>, and unused rolls pay <strong>1 Akçe</strong> each.</dd>
+        </div>
+        <div>
+          <dt>Mars</dt>
+          <dd>Win before any moving enemy reaches the end to double the payout.</dd>
+        </div>
+        <div>
+          <dt>Enemies</dt>
+          <dd>Every enemy phase, the two enemy pieces farthest from the player base move one by one. Pawns move 2 pips, or 1 pip when blocked by a defended white gate. Rams can attack a defended gate and push one white checker to the bar.</dd>
+        </div>
+        <div>
+          <dt>Tiles</dt>
+          <dd>Relic-pips are placed in your bottom <strong>deck</strong>. <strong>Forge</strong> gives that checker +1 Mult forever, <strong>Market</strong> doubles Chips for that move, and other relic-pips add break, money, haste, or Mult effects.</dd>
+        </div>
+        <div>
+          <dt>Shop</dt>
+          <dd>Clear a blind to visit the shop. Buy relic-pips, hide the store to inspect the board, then place them on your bottom 12 deck pips. Boss and enemy board changes only affect the top half.</dd>
+        </div>
+      </dl>
+    </div>
+
+    <div class="tab-content" id="wikiTabContent" role="tabpanel" aria-labelledby="wikiTabBtn" hidden>
+      <div class="wiki-nav">
+        <button class="wiki-nav-btn active" data-wiki-section="pips" type="button">Pips</button>
+        <button class="wiki-nav-btn" data-wiki-section="cores" type="button">Cores</button>
+        <button class="wiki-nav-btn" data-wiki-section="rims" type="button">Rims</button>
+        <button class="wiki-nav-btn" data-wiki-section="enemies" type="button">Enemies</button>
       </div>
-      <div>
-        <dt>Scoring</dt>
-        <dd>Move Score = <strong>Chips x global Mult</strong>, then checker and tile Mult can push it higher.</dd>
+
+      <div class="wiki-section active" id="wiki-section-pips">
+        <div class="wiki-grid">
+          <div class="wiki-card">
+            <div class="wiki-visual">
+              <div class="wiki-pip-badge forge">F</div>
+            </div>
+            <div class="wiki-info">
+              <h3>The Forge</h3>
+              <p>Landing here temporarily upgrades the checker's rim tier (Basic &rarr; Glass &rarr; Ruby &rarr; Prism) for the round. Passing over it adds +5 Chips to the move.</p>
+            </div>
+          </div>
+          <div class="wiki-card">
+            <div class="wiki-visual">
+              <div class="wiki-pip-badge market">M</div>
+            </div>
+            <div class="wiki-info">
+              <h3>The Market</h3>
+              <p>Landing here doubles the total Chips for this move. Passing over it adds +0.25 Mult to the move.</p>
+            </div>
+          </div>
+          <div class="wiki-card">
+            <div class="wiki-visual">
+              <div class="wiki-pip-badge iron">I</div>
+            </div>
+            <div class="wiki-info">
+              <h3>Iron Gate</h3>
+              <p>Breaking a red enemy checker on this pip grants +2 global Mult for the rest of the round.</p>
+            </div>
+          </div>
+          <div class="wiki-card">
+            <div class="wiki-visual">
+              <div class="wiki-pip-badge haste">H</div>
+            </div>
+            <div class="wiki-info">
+              <h3>Haste Line</h3>
+              <p>Landing here with a die value of 5 or 6 adds +20 Chips to the move.</p>
+            </div>
+          </div>
+          <div class="wiki-card">
+            <div class="wiki-visual">
+              <div class="wiki-pip-badge ledger">$</div>
+            </div>
+            <div class="wiki-info">
+              <h3>Ledger Pip</h3>
+              <p>Breaking a red enemy checker on this pip immediately awards +1 Ak&ccedil;e.</p>
+            </div>
+          </div>
+          <div class="wiki-card">
+            <div class="wiki-visual">
+              <div class="wiki-pip-badge dealer">+</div>
+            </div>
+            <div class="wiki-info">
+              <h3>Dealer Pip</h3>
+              <p>Landing here grants +1 global Mult for the rest of the round.</p>
+            </div>
+          </div>
+        </div>
       </div>
-      <div>
-        <dt>Pass-over hooks</dt>
-        <dd>Checkers now jump pip-by-pip. Passed pips can trigger future effects before the checker lands.</dd>
+
+      <div class="wiki-section" id="wiki-section-cores" hidden>
+        <div class="wiki-grid">
+          <div class="wiki-card">
+            <div class="wiki-visual">
+              <div class="wiki-checker-badge core-basic">
+                <span class="wiki-glyph glyph-basic"></span>
+              </div>
+            </div>
+            <div class="wiki-info">
+              <h3>Basic Core <span class="stat-badge">+10 Chips</span></h3>
+              <p>Standard checker core. Solid, reliable, and represents the backbone of your starting array.</p>
+            </div>
+          </div>
+          <div class="wiki-card">
+            <div class="wiki-visual">
+              <div class="wiki-checker-badge core-gold">
+                <span class="wiki-glyph glyph-gold"></span>
+              </div>
+            </div>
+            <div class="wiki-info">
+              <h3>Gold Core <span class="stat-badge">+50 Chips</span></h3>
+              <p>Gilded checker core. Grants a strong baseline boost of +50 Chips to every move made by this checker.</p>
+            </div>
+          </div>
+          <div class="wiki-card">
+            <div class="wiki-visual">
+              <div class="wiki-checker-badge core-platinum">
+                <span class="wiki-glyph glyph-platinum"></span>
+              </div>
+            </div>
+            <div class="wiki-info">
+              <h3>Platinum Core <span class="stat-badge">+100 Chips</span></h3>
+              <p>Lustrous platinum core. Outfitted with royal engravings, granting a massive +100 Chips baseline boost.</p>
+            </div>
+          </div>
+          <div class="wiki-card">
+            <div class="wiki-visual">
+              <div class="wiki-checker-badge core-anchor">
+                <span class="wiki-glyph glyph-anchor"></span>
+              </div>
+            </div>
+            <div class="wiki-info">
+              <h3>Anchor Core <span class="stat-badge">+10 Chips</span></h3>
+              <p>Heavy iron anchor core. Makes the checker <strong>invulnerable</strong> to enemy capturing/breaking. When defending a gate (even single), enemies are blocked from landing.</p>
+            </div>
+          </div>
+        </div>
       </div>
-      <div>
-        <dt>Break</dt>
-        <dd>Land on one red checker to break it for <strong>+200 Chips</strong>.</dd>
+
+      <div class="wiki-section" id="wiki-section-rims" hidden>
+        <div class="wiki-grid">
+          <div class="wiki-card">
+            <div class="wiki-visual">
+              <div class="wiki-checker-badge rim-basic"></div>
+            </div>
+            <div class="wiki-info">
+              <h3>Basic Rim <span class="stat-badge">x1 Mult</span></h3>
+              <p>Standard brass rim. Standard multiplier, durable and handles normal movements.</p>
+            </div>
+          </div>
+          <div class="wiki-card">
+            <div class="wiki-visual">
+              <div class="wiki-checker-badge rim-glass"></div>
+            </div>
+            <div class="wiki-info">
+              <h3>Glass Rim <span class="stat-badge x2">x2 Mult</span></h3>
+              <p>Fragile, gleaming glass rim. Grants x2 Mult but <strong>shatters</strong> and breaks permanently if hit by an enemy piece (unless reinforced by an Anchor Core).</p>
+            </div>
+          </div>
+          <div class="wiki-card">
+            <div class="wiki-visual">
+              <div class="wiki-checker-badge rim-ruby"></div>
+            </div>
+            <div class="wiki-info">
+              <h3>Ruby Rim <span class="stat-badge x3">x3 Mult</span></h3>
+              <p>Polished crimson gemstone rim. Increases the checker's scoring multiplier to x3.</p>
+            </div>
+          </div>
+          <div class="wiki-card">
+            <div class="wiki-visual">
+              <div class="wiki-checker-badge rim-prism"></div>
+            </div>
+            <div class="wiki-info">
+              <h3>Prism Rim <span class="stat-badge x5">x5 Mult</span></h3>
+              <p>Legendary color-shifting rim. Yields a massive x5 Mult, unleashing enormous scoring runs.</p>
+            </div>
+          </div>
+        </div>
       </div>
-      <div>
-        <dt>Allied landing</dt>
-        <dd>Land on white checkers to gain <strong>+50 Chips</strong> for each white checker already there.</dd>
+
+      <div class="wiki-section" id="wiki-section-enemies" hidden>
+        <div class="wiki-grid">
+          <div class="wiki-card">
+            <div class="wiki-visual">
+              <div class="wiki-enemy-badge pawn">
+                <span class="enemy-icon">&dagger;</span>
+              </div>
+            </div>
+            <div class="wiki-info">
+              <h3>Pawn <span class="stat-badge enemy">2 Pips</span></h3>
+              <p>Standard enemy checker. Moves 2 pips during enemy movement phases. Reduced to moving only 1 pip when attempting to pass a defended player gate (2+ checkers).</p>
+            </div>
+          </div>
+          <div class="wiki-card">
+            <div class="wiki-visual">
+              <div class="wiki-enemy-badge ram">
+                <span class="enemy-icon">R</span>
+              </div>
+            </div>
+            <div class="wiki-info">
+              <h3>Ram <span class="stat-badge enemy">2x3 Pips</span></h3>
+              <p>Battering Ram enemy. Moves up to 3 times per phase (each step advances 2 pips). Can attack defended player gates, dislodging one player checker and sending it to the Bar.</p>
+            </div>
+          </div>
+          <div class="wiki-card">
+            <div class="wiki-visual">
+              <div class="wiki-boss-badge">
+                <span class="boss-icon">W</span>
+              </div>
+            </div>
+            <div class="wiki-info">
+              <h3>The Wall <span class="stat-badge boss">Level 3 Boss</span></h3>
+              <p>Boss mechanism. Restricts the playing area by locking Pips 13 and 14 on the top (enemy) half of the board. Player checkers cannot land on locked pips.</p>
+            </div>
+          </div>
+        </div>
       </div>
-      <div>
-        <dt>Bear off</dt>
-        <dd>Move past pip 24 to score <strong>+250 Chips</strong>.</dd>
-      </div>
-      <div>
-        <dt>Doubles</dt>
-        <dd>Rolling a double turns the matched dice into <strong>four moves</strong> of that value.</dd>
-      </div>
-      <div>
-        <dt>Payout</dt>
-        <dd>Clearing a normal blind pays <strong>3 Akçe</strong>, the boss pays <strong>5 Akçe</strong>, and unused rolls pay <strong>1 Akçe</strong> each.</dd>
-      </div>
-      <div>
-        <dt>Mars</dt>
-        <dd>Win before any moving enemy reaches the end to double the payout.</dd>
-      </div>
-      <div>
-        <dt>Enemies</dt>
-        <dd>Every enemy phase, the two enemy pieces farthest from the player base move one by one. Pawns move 2 pips, or 1 pip when blocked by a defended white gate. Rams can attack a defended gate and push one white checker to the bar.</dd>
-      </div>
-      <div>
-        <dt>Tiles</dt>
-        <dd>Relic-pips are placed in your bottom <strong>deck</strong>. <strong>Forge</strong> gives that checker +1 Mult forever, <strong>Market</strong> doubles Chips for that move, and other relic-pips add break, money, haste, or Mult effects.</dd>
-      </div>
-      <div>
-        <dt>Shop</dt>
-        <dd>Clear a blind to visit the shop. Buy relic-pips, hide the store to inspect the board, then place them on your bottom 12 deck pips. Boss and enemy board changes only affect the top half.</dd>
-      </div>
-    </dl>
+    </div>
   </aside>
 
   <main class="game-stage">
