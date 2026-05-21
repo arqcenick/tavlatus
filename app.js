@@ -1654,6 +1654,70 @@ const canvas = document.getElementById("gameCanvas");
 
       ctx.restore();
 
+      // Layer 2: Smooth Waving rotated grid (Psychedelic warped space - anti-aliased)
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(time * 0.025 * multFactor);
+      ctx.translate(-cx, -cy);
+
+      ctx.globalAlpha = 0.08 + (multFactor - 1.0) * 0.03;
+      ctx.strokeStyle = "rgba(37, 185, 201, 0.75)";
+      ctx.lineWidth = 1.4;
+
+      const bound = Math.max(width, height) * 1.5;
+      const startX = cx - bound / 2;
+      const endX = cx + bound / 2;
+      const startY = cy - bound / 2;
+      const endY = cy + bound / 2;
+      const gridSize = 45;
+      const gridWarpTime = time * 1.8 * multFactor;
+      const warpStep = 8; // Small step for high resolution details
+
+      // Horizontal grid lines
+      for (let y = startY; y <= endY; y += gridSize) {
+        ctx.beginPath();
+        const points = [];
+        for (let x = startX; x <= endX; x += warpStep) {
+          const warpY = y + Math.sin(x * 0.005 + gridWarpTime) * 40 * multFactor + Math.cos((x + y) * 0.004 - gridWarpTime) * 20 * multFactor;
+          points.push({ x, y: warpY });
+        }
+        if (points.length > 0) {
+          ctx.moveTo(points[0].x, points[0].y);
+          for (let i = 0; i < points.length - 1; i++) {
+            const p0 = points[i];
+            const p1 = points[i + 1];
+            const midX = (p0.x + p1.x) / 2;
+            const midY = (p0.y + p1.y) / 2;
+            ctx.quadraticCurveTo(p0.x, p0.y, midX, midY);
+          }
+          ctx.lineTo(points[points.length - 1].x, points[points.length - 1].y);
+          ctx.stroke();
+        }
+      }
+
+      // Vertical grid lines
+      for (let x = startX; x <= endX; x += gridSize) {
+        ctx.beginPath();
+        const points = [];
+        for (let y = startY; y <= endY; y += warpStep) {
+          const warpX = x + Math.cos(y * 0.005 - gridWarpTime) * 40 * multFactor + Math.sin((x + y) * 0.004 + gridWarpTime) * 20 * multFactor;
+          points.push({ x: warpX, y });
+        }
+        if (points.length > 0) {
+          ctx.moveTo(points[0].x, points[0].y);
+          for (let i = 0; i < points.length - 1; i++) {
+            const p0 = points[i];
+            const p1 = points[i + 1];
+            const midX = (p0.x + p1.x) / 2;
+            const midY = (p0.y + p1.y) / 2;
+            ctx.quadraticCurveTo(p0.x, p0.y, midX, midY);
+          }
+          ctx.lineTo(points[points.length - 1].x, points[points.length - 1].y);
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
+
       // Layer 3: Spirograph / Sacred Geometry Mandalas behind board tables
       const boardLeft = layout.leftMenuWidth + layout.boardPaddingX;
       const boardWidth = width - boardLeft - layout.rightMenuWidth - layout.boardPaddingX;
