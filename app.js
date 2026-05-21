@@ -1334,9 +1334,25 @@ const canvas = document.getElementById("gameCanvas");
       const x = event.clientX - rect.left;
       const y = event.clientY - rect.top;
 
-      const button = GameState.buttons.find((candidate) => pointInRect(x, y, candidate));
+      const isStoreOpen = GameState.turnPhase === TurnPhase.SHOP && !GameState.storeHidden && !GameState.deckPlacement;
+
+      const button = GameState.buttons.find((candidate) => {
+        if (!pointInRect(x, y, candidate)) return false;
+        if (isStoreOpen) {
+          const isLeftMenuButton = (candidate.x + candidate.width) <= layout.leftMenuWidth;
+          const isShopCard = candidate.tooltip && candidate.tooltip.kind === "shop";
+          const isStoreButton = candidate.tooltip && candidate.tooltip.kind === "button" && 
+            (candidate.tooltip.title === "Hide Store" || candidate.tooltip.title === "Next Blind" || candidate.tooltip.title === "Show Store");
+          if (!isLeftMenuButton && !isShopCard && !isStoreButton) return false;
+        }
+        return true;
+      });
       if (button) {
         if (button.action) button.action();
+        return;
+      }
+
+      if (isStoreOpen) {
         return;
       }
 
@@ -4471,7 +4487,9 @@ const canvas = document.getElementById("gameCanvas");
       }
 
       const { x, y } = GameState.hover;
-      const checkerHit = GameState.deckPlacement
+      const isStoreOpen = GameState.turnPhase === TurnPhase.SHOP && !GameState.storeHidden && !GameState.deckPlacement;
+
+      const checkerHit = (GameState.deckPlacement || isStoreOpen)
         ? null
         : [...GameState.checkerHitAreas].reverse().find((area) => pointInRect(x, y, area));
       if (checkerHit) {
@@ -4484,7 +4502,7 @@ const canvas = document.getElementById("gameCanvas");
         return;
       }
 
-      const pipHit = GameState.pipHitAreas.find((area) => pointInRect(x, y, area));
+      const pipHit = isStoreOpen ? null : GameState.pipHitAreas.find((area) => pointInRect(x, y, area));
       if (pipHit) {
         GameState.hover.tooltip = pipHit.tooltip;
         if (GameState.deckPlacement) {
@@ -4507,19 +4525,29 @@ const canvas = document.getElementById("gameCanvas");
         return;
       }
 
-      if (GameState.barHitArea && pointInRect(x, y, GameState.barHitArea)) {
+      if (!isStoreOpen && GameState.barHitArea && pointInRect(x, y, GameState.barHitArea)) {
         GameState.hover.tooltip = GameState.barHitArea.tooltip;
         canvas.style.cursor = GameState.bar.player.length ? "pointer" : "help";
         return;
       }
 
-      if (GameState.bearOffArea && pointInRect(x, y, GameState.bearOffArea)) {
+      if (!isStoreOpen && GameState.bearOffArea && pointInRect(x, y, GameState.bearOffArea)) {
         GameState.hover.tooltip = GameState.bearOffArea.tooltip;
         canvas.style.cursor = "help";
         return;
       }
 
-      const buttonHit = [...GameState.buttons].reverse().find((area) => area.tooltip && pointInRect(x, y, area));
+      const buttonHit = [...GameState.buttons].reverse().find((area) => {
+        if (!area.tooltip || !pointInRect(x, y, area)) return false;
+        if (isStoreOpen) {
+          const isLeftMenuButton = (area.x + area.width) <= layout.leftMenuWidth;
+          const isShopCard = area.tooltip.kind === "shop";
+          const isStoreButton = area.tooltip.kind === "button" && 
+            (area.tooltip.title === "Hide Store" || area.tooltip.title === "Next Blind" || area.tooltip.title === "Show Store");
+          if (!isLeftMenuButton && !isShopCard && !isStoreButton) return false;
+        }
+        return true;
+      });
       if (buttonHit) {
         GameState.hover.tooltip = buttonHit.tooltip;
         canvas.style.cursor = buttonHit.action ? "pointer" : "help";
@@ -4633,6 +4661,13 @@ const canvas = document.getElementById("gameCanvas");
       return "Pass-over has no extra effect.";
     }
 
+    function getCheckerName(checker) {
+      if (checker.core === "basic" && checker.rim === "basic") {
+        return "Basic Checker";
+      }
+      return `${capitalize(checker.core || "basic")} Core, ${capitalize(checker.rim || "basic")} Rim`;
+    }
+
     function getCheckerTooltip(checker, owner) {
       if (owner === "enemy") {
         const ability = getEnemyAbility(checker);
@@ -4644,13 +4679,6 @@ const canvas = document.getElementById("gameCanvas");
           title: ability === EnemyAbility.RAM ? "Ram Enemy Checker" : "Pawn Enemy Checker",
           body: `${moverText} Land on one red checker to break it for +200 Chips.`
         };
-      }
-
-      function getCheckerName(checker) {
-        if (checker.core === "basic" && checker.rim === "basic") {
-          return "Basic Checker";
-        }
-        return `${capitalize(checker.core || "basic")} Core, ${capitalize(checker.rim || "basic")} Rim`;
       }
 
       const coreDesc = {
