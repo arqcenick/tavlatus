@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Pipjack</title>
+  <title>Tavlatus</title>
   <link rel="stylesheet" href="style.css" />
   <script src="game-core.js" defer></script>
   <script src="app.js" defer></script>
@@ -19,13 +19,13 @@
     <div class="drawer-head">
       <div>
         <p class="panel-kicker">Rules</p>
-        <h1>Pipjack</h1>
+        <h1>Tavlatus</h1>
       </div>
       <button class="drawer-close" id="rulesClose" type="button" aria-label="Close rules">Close</button>
     </div>
 
     <h2>Score, then survive the blind.</h2>
-    <p>Dice roll automatically. Select a white checker, move by an available die, then End Turn to roll again or collect a beaten blind.</p>
+    <p>Dice roll automatically. Select a white checker, move by an available die, then press Win after beating the target to visit the shop.</p>
 
     <dl>
       <div>
@@ -62,11 +62,11 @@
       </div>
       <div>
         <dt>Mars</dt>
-        <dd>Win before a mover enemy reaches the end to double the payout.</dd>
+        <dd>Win before any moving enemy reaches the end to double the payout.</dd>
       </div>
       <div>
         <dt>Enemies</dt>
-        <dd>Bright red enemies stay still. Darker red enemies with swords move 2 pips at end of turn unless blocked by two or more white checkers.</dd>
+        <dd>Every enemy phase, the two enemy pieces farthest from the player base move one by one. Pawns move 2 pips, or 1 pip when blocked by a defended white gate. Rams can attack a defended gate and push one white checker to the bar.</dd>
       </div>
       <div>
         <dt>Tiles</dt>
@@ -80,7 +80,7 @@
   </aside>
 
   <main class="game-stage">
-    <canvas id="gameCanvas" width="1280" height="800" aria-label="Pipjack backgammon roguelike prototype"></canvas>
+    <canvas id="gameCanvas" width="1280" height="800" aria-label="Tavlatus backgammon roguelike prototype"></canvas>
   </main>
 </body>
 </html>

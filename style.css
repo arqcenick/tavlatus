@@ -1,8 +1,8 @@
 :root {
   color-scheme: dark;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  background: #120714;
-  color: #fff8e7;
+  background: #071014;
+  color: #f6dfaa;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
 }
@@ -21,12 +21,11 @@ body {
   margin: 0;
   overflow: hidden;
   background:
-    radial-gradient(circle at 12% 18%, rgba(255, 222, 72, 0.38), transparent 13rem),
-    radial-gradient(circle at 82% 10%, rgba(49, 223, 252, 0.32), transparent 15rem),
-    radial-gradient(circle at 74% 80%, rgba(255, 44, 132, 0.28), transparent 17rem),
-    conic-gradient(from 38deg at 50% 48%, #2d0b42, #0a4562, #5f124f, #1e0b3d, #2d0b42);
-  background-size: 140% 140%, 150% 150%, 160% 160%, 220% 220%;
-  animation: fractal-pan 12s linear infinite;
+    radial-gradient(circle at 22% 22%, rgba(201, 138, 67, 0.16), transparent 18rem),
+    radial-gradient(circle at 78% 28%, rgba(10, 160, 168, 0.15), transparent 22rem),
+    radial-gradient(circle at 54% 78%, rgba(158, 36, 76, 0.16), transparent 20rem),
+    linear-gradient(135deg, #071014, #0d1f23 46%, #05090b);
+  background-size: 130% 130%, 150% 150%, 150% 150%, auto;
 }
 
 body::before {
@@ -35,12 +34,12 @@ body::before {
   pointer-events: none;
   content: "";
   background-image:
-    repeating-radial-gradient(circle at 20% 30%, rgba(255,255,255,0.16) 0 1px, transparent 1px 9px),
-    repeating-conic-gradient(from 12deg at 72% 44%, rgba(255,255,255,0.08) 0 4deg, transparent 4deg 11deg);
-  mix-blend-mode: overlay;
-  opacity: 0.76;
+    linear-gradient(90deg, rgba(201,138,67,0.10) 1px, transparent 1px),
+    linear-gradient(0deg, rgba(37,185,201,0.07) 1px, transparent 1px);
+  background-size: 74px 74px, 74px 74px;
+  mix-blend-mode: screen;
+  opacity: 0.34;
   mask-image: radial-gradient(circle at center, black, transparent 78%);
-  animation: fractal-spin 18s linear infinite;
 }
 
 .game-stage {
@@ -53,16 +52,16 @@ canvas {
   width: 100vw;
   height: 100vh;
   display: block;
-  background: #160817;
+  background: #071014;
 }
 
 .drawer-toggle,
 .drawer-close {
   appearance: none;
   border: 1px solid rgba(255, 255, 255, 0.24);
-  border-radius: 999px;
-  background: linear-gradient(135deg, #ff2b86, #7c3dff);
-  color: #fff8e7;
+  border-radius: 4px;
+  background: linear-gradient(180deg, #123035, #071014);
+  color: #f6dfaa;
   cursor: pointer;
   font: inherit;
   font-size: 13px;
@@ -73,10 +72,10 @@ canvas {
 .drawer-toggle {
   position: fixed;
   z-index: 30;
-  top: 18px;
-  left: 18px;
-  min-width: 84px;
-  padding: 11px 16px;
+  right: 16px;
+  bottom: 16px;
+  min-width: 78px;
+  padding: 9px 13px;
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.26);
 }
 
@@ -88,7 +87,7 @@ canvas {
   position: fixed;
   z-index: 35;
   inset: 0;
-  background: rgba(7, 3, 12, 0.42);
+  background: rgba(3, 8, 11, 0.58);
   backdrop-filter: blur(3px);
 }
 
@@ -103,9 +102,9 @@ canvas {
   overflow: auto;
   border-right: 1px solid rgba(255, 255, 255, 0.22);
   background:
-    linear-gradient(150deg, rgba(255, 248, 231, 0.94), rgba(255, 245, 167, 0.78)),
-    rgba(255,255,255,0.72);
-  color: #211122;
+    linear-gradient(150deg, rgba(18, 48, 53, 0.98), rgba(7, 16, 20, 0.98)),
+    #071014;
+  color: #f6dfaa;
   box-shadow: 28px 0 80px rgba(0, 0, 0, 0.35);
   transform: translateX(-104%);
   transition: transform 220ms ease;
@@ -125,7 +124,7 @@ canvas {
 
 .panel-kicker {
   margin: 0 0 8px;
-  color: #7c245e;
+  color: #c98a43;
   font-size: 12px;
   font-weight: 900;
   text-transform: uppercase;
@@ -133,7 +132,7 @@ canvas {
 
 .rules-drawer h1 {
   margin: 0;
-  color: #211122;
+  color: #f6dfaa;
   font-size: 42px;
   line-height: 0.95;
   letter-spacing: 0;
@@ -141,7 +140,7 @@ canvas {
 
 .rules-drawer h2 {
   margin: 0 0 12px;
-  color: #211122;
+  color: #f6dfaa;
   font-size: 25px;
   line-height: 1.08;
   letter-spacing: 0;
@@ -149,7 +148,7 @@ canvas {
 
 .rules-drawer p {
   margin: 0 0 18px;
-  color: #55404d;
+  color: #8fb0a4;
   font-size: 14px;
   line-height: 1.5;
 }
@@ -162,19 +161,19 @@ canvas {
 
 .rules-drawer dl > div {
   padding-top: 13px;
-  border-top: 1px solid rgba(63, 20, 65, 0.15);
+  border-top: 1px solid rgba(201, 138, 67, 0.24);
 }
 
 .rules-drawer dt {
   margin: 0 0 4px;
-  color: #211122;
+  color: #f6dfaa;
   font-size: 13px;
   font-weight: 900;
 }
 
 .rules-drawer dd {
   margin: 0;
-  color: #55404d;
+  color: #8fb0a4;
   font-size: 13px;
   line-height: 1.42;
 }

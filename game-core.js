@@ -22,11 +22,16 @@
     SPRINTER: "sprinter"
   });
 
+  const EnemyAbility = Object.freeze({
+    PAWN: "pawn",
+    RAM: "ram"
+  });
+
   const RelicLibrary = Object.freeze({
     SNEAKY_DIE: {
       id: "sneaky_die",
-      name: "The Ssneaky Die",
-      shortName: "Ssneaky Die",
+      name: "The Sneaky Die",
+      shortName: "Sneaky Die",
       description: "Roll 3 dice instead of 2. All dice must be consumed."
     },
     IRON_BAR: {
@@ -84,7 +89,8 @@
       name: "Small Blind",
       target: 750,
       rolls: 8,
-      enemyHazards: 0,
+      enemyMoves: 2,
+      enemyRams: 1,
       bossRule: null
     },
     {
@@ -92,7 +98,8 @@
       name: "Big Blind",
       target: 1400,
       rolls: 8,
-      enemyHazards: 2,
+      enemyMoves: 2,
+      enemyRams: 2,
       bossRule: null
     },
     {
@@ -100,7 +107,8 @@
       name: "Boss Blind",
       target: 2600,
       rolls: 9,
-      enemyHazards: 3,
+      enemyMoves: 2,
+      enemyRams: 3,
       bossRule: {
         id: "the_wall",
         name: "The Wall",
@@ -180,15 +188,21 @@
       }
     }
 
-    spawnHazards(board, level?.enemyHazards || 0);
+    spawnHazards(board, level?.enemyRams || 0);
     return board;
   }
 
-  function spawnHazards(board, hazardCount) {
+  function spawnHazards(board, ramCount) {
+    for (const pip of board) {
+      for (const checker of pip.enemyPieces) {
+        checker.ability = EnemyAbility.PAWN;
+      }
+    }
+
     const candidates = [12, 14, 16, 18, 20, 23].filter((pipIndex) => board[pipIndex].enemyPieces.length > 0);
-    for (let i = 0; i < hazardCount && i < candidates.length; i++) {
-      const mover = board[candidates[i]].enemyPieces[board[candidates[i]].enemyPieces.length - 1];
-      if (mover) mover.ability = "mover";
+    for (let i = 0; i < ramCount && i < candidates.length; i++) {
+      const ram = board[candidates[i]].enemyPieces[board[candidates[i]].enemyPieces.length - 1];
+      if (ram) ram.ability = EnemyAbility.RAM;
     }
   }
 
@@ -393,6 +407,7 @@
     PIPS_PER_ROW,
     TurnPhase,
     CheckerType,
+    EnemyAbility,
     RelicLibrary,
     TileModifierLibrary,
     LevelConfig,

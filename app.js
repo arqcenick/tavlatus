@@ -10,40 +10,44 @@ const canvas = document.getElementById("gameCanvas");
       PIPS_PER_ROW,
       TurnPhase,
       CheckerType,
+      EnemyAbility,
       RelicLibrary,
       TileModifierLibrary,
       LevelConfig
     } = Core;
 
     const Theme = Object.freeze({
-      paper: "#160817",
-      panel: "#25102d",
-      panelSoft: "rgba(255,248,231,0.78)",
-      ink: "#fff8e7",
-      darkInk: "#1b1020",
-      muted: "#d9c8e8",
-      faint: "rgba(255,255,255,0.12)",
-      line: "rgba(255,255,255,0.24)",
-      player: "#fff8e7",
-      playerEdge: "#1a1021",
-      enemy: "#ff3f72",
-      enemyEdge: "#5b0c37",
-      pipA: "#ffcf48",
-      pipB: "#27d7ff",
-      accent: "#35f2a4",
-      gold: "#ffe15c",
-      blue: "#28d4ff",
-      danger: "#ff3f72",
-      valid: "#a6ff43",
-      purple: "#8d4dff"
+      paper: "#071014",
+      panel: "#0b1d22",
+      panelSoft: "rgba(223, 192, 130, 0.82)",
+      ink: "#f6dfaa",
+      darkInk: "#071014",
+      muted: "#8fb0a4",
+      faint: "rgba(223,192,130,0.10)",
+      line: "rgba(191,126,66,0.46)",
+      brass: "#c98a43",
+      brassDark: "#6b3f20",
+      copper: "#a95739",
+      player: "#f2dfba",
+      playerEdge: "#4c3a26",
+      enemy: "#b63135",
+      enemyEdge: "#4f1718",
+      pipA: "#0aa0a8",
+      pipB: "#9e244c",
+      accent: "#70e35f",
+      gold: "#e4b75a",
+      blue: "#25b9c9",
+      danger: "#d84a55",
+      valid: "#b6f553",
+      purple: "#8f5c9c"
     });
 
     const layout = {
-      leftMenuWidth: 286,
-      boardPaddingX: 34,
-      boardPaddingY: 34,
+      leftMenuWidth: 272,
+      boardPaddingX: 30,
+      boardPaddingY: 28,
       pipGap: 6,
-      checkerRadius: 26
+      checkerRadius: 24
     };
 
     let nextCheckerId = 1;
@@ -115,8 +119,8 @@ const canvas = document.getElementById("gameCanvas");
       return Core.createStartingBoard(levelIndex, createChecker);
     }
 
-    function spawnHazards(board, hazardCount) {
-      Core.spawnHazards(board, hazardCount);
+    function spawnHazards(board, ramCount) {
+      Core.spawnHazards(board, ramCount);
     }
 
     function resetLevel(levelIndex, preserveRelics = true) {
@@ -210,7 +214,7 @@ const canvas = document.getElementById("gameCanvas");
         },
         {
           kind: "relic",
-          title: "Ssneaky Die",
+          title: "Sneaky Die",
           detail: "Roll 3 dice instead of 2.",
           price: 6,
           relic: RelicLibrary.SNEAKY_DIE
@@ -393,64 +397,180 @@ const canvas = document.getElementById("gameCanvas");
     function resolveEnemyTurn() {
       const pendingAtStart = GameState.enemyPendingReentry;
       GameState.enemyPendingReentry = [];
+      const moves = getEnemyMovesForTurn();
+      if (!moves.length) {
+        finishEnemyTurn(pendingAtStart, 0, 0);
+        return;
+      }
+
+      GameState.turnPhase = TurnPhase.EVALUATING;
+      let movedCount = 0;
+      let pushedCount = 0;
+      let moveIndex = 0;
+
+      const resolveNextMove = () => {
+        if (moveIndex >= moves.length || GameState.turnPhase === TurnPhase.ROUND_OVER) {
+          finishEnemyTurn(pendingAtStart, movedCount, pushedCount);
+          return;
+        }
+
+        const move = moves[moveIndex++];
+        const current = findEnemyCheckerPosition(move.checkerId);
+        if (!current) {
+          resolveNextMove();
+          return;
+        }
+
+        const [checker] = current.pip.enemyPieces.splice(current.index, 1);
+        const result = advanceEnemyChecker(checker, current.pip.index);
+        if (result.moved) movedCount += 1;
+        pushedCount += result.pushed;
+
+        const label = getEnemyAbility(checker) === EnemyAbility.RAM ? "Ram" : "Pawn";
+        GameState.message = `${label} ${moveIndex}/${moves.length} advanced.`;
+        setTimeout(resolveNextMove, result.duration + 220);
+      };
+
+      resolveNextMove();
+    }
+
+    function getEnemyMovesForTurn() {
+      const moveCount = getEnemyMoveCount();
       const moves = [];
 
       for (const pip of GameState.board) {
-        const mover = pip.enemyPieces.find((checker) => checker.ability === "mover");
-        if (!mover) continue;
-        moves.push({ source: pip.index, checker: mover });
+        const mover = chooseEnemyMover(pip.enemyPieces);
+        if (mover) moves.push({ source: pip.index, checkerId: mover.id });
       }
 
-      let movedCount = 0;
-      for (const move of moves.sort((a, b) => a.source - b.source)) {
-        const sourcePip = GameState.board[move.source];
-        const currentIndex = sourcePip.enemyPieces.findIndex((checker) => checker.id === move.checker.id);
-        if (currentIndex === -1) continue;
+      return moves
+        .sort((a, b) => b.source - a.source)
+        .slice(0, moveCount);
+    }
 
-        const destination = move.source - 2;
-        const [checker] = sourcePip.enemyPieces.splice(currentIndex, 1);
-        if (destination < 0) {
-          GameState.enemyPendingReentry.push(checker);
-          GameState.enemyEscaped = true;
-          addFloatingText(getPipCenter(move.source).x, getPipCenter(move.source).y, "Enemy scored", Theme.danger, 0.9);
-          movedCount += 1;
-          continue;
-        }
+    function getEnemyMoveCount() {
+      const level = LevelConfig[GameState.levelIndex];
+      return level.bossRule?.enemyMoves || level.enemyMoves || 2;
+    }
 
-        const targetPip = GameState.board[destination];
-        if (!targetPip || targetPip.playerPieces.length >= 2) {
-          sourcePip.enemyPieces.push(checker);
-          continue;
-        }
-
-        if (targetPip.playerPieces.length === 1) {
-          const victim = targetPip.playerPieces.pop();
-          if (victim.type === CheckerType.ANCHOR) {
-            sourcePip.enemyPieces.push(checker);
-            targetPip.playerPieces.push(victim);
-            continue;
-          }
-          if (victim.type === CheckerType.GLASS) {
-            victim.destroyed = true;
-            GameState.destroyed.push(victim);
-            addFloatingText(getPipCenter(destination).x, getPipCenter(destination).y, "Glass shattered", Theme.blue, 0.9);
-          } else {
-            GameState.bar.player.push(victim);
-            addFloatingText(getPipCenter(destination).x, getPipCenter(destination).y, "Hit to bar", Theme.danger, 0.9);
-          }
-        }
-
-        targetPip.enemyPieces.push(checker);
-        addMoveAnimation(checker, [getPipCenter(move.source), getPipCenter(destination)], "enemy");
-        movedCount += 1;
-      }
-
+    function finishEnemyTurn(pendingAtStart, movedCount, pushedCount) {
       if (movedCount > 0) {
-        GameState.message = `${movedCount} enemy mover${movedCount === 1 ? "" : "s"} advanced.`;
+        const pushText = pushedCount ? ` ${pushedCount} ram push${pushedCount === 1 ? "" : "es"}.` : "";
+        GameState.message = `${movedCount} enemy ${movedCount === 1 ? "piece" : "pieces"} advanced.${pushText}`;
       }
 
       reenterPendingEnemies(pendingAtStart);
       checkRoundLoss();
+      if (GameState.turnPhase === TurnPhase.ROUND_OVER) return;
+
+      GameState.turn += 1;
+      GameState.turnPhase = TurnPhase.ROLLING;
+      GameState.message = movedCount > 0 ? `${GameState.message} Dice are rolling again.` : "Enemy held position. Dice are rolling again.";
+      queueAutoRoll();
+    }
+
+    function findEnemyCheckerPosition(checkerId) {
+      for (const pip of GameState.board) {
+        const index = pip.enemyPieces.findIndex((checker) => checker.id === checkerId);
+        if (index !== -1) return { pip, index };
+      }
+      return null;
+    }
+
+    function chooseEnemyMover(enemyPieces) {
+      return enemyPieces.find((checker) => getEnemyAbility(checker) === EnemyAbility.RAM)
+        || enemyPieces.find((checker) => getEnemyAbility(checker) === EnemyAbility.PAWN);
+    }
+
+    function getEnemyAbility(checker) {
+      if (checker.ability === "mover") return EnemyAbility.PAWN;
+      return checker.ability || EnemyAbility.PAWN;
+    }
+
+    function advanceEnemyChecker(checker, source) {
+      const path = [getPipCenter(source)];
+      let currentSource = source;
+      let pushed = 0;
+      let moved = false;
+
+      for (let step = 0; step < 3; step++) {
+        const result = resolveEnemyStep(checker, currentSource);
+        if (result.type === "blocked") break;
+        if (result.type === "score") {
+          GameState.enemyPendingReentry.push(checker);
+          GameState.enemyEscaped = true;
+          addFloatingText(getPipCenter(currentSource).x, getPipCenter(currentSource).y, "Enemy scored", Theme.danger, 0.9);
+          path.push(getBearOffCenter());
+          moved = true;
+          currentSource = null;
+          break;
+        }
+
+        currentSource = result.destination;
+        pushed += result.pushed ? 1 : 0;
+        path.push(getPipCenter(currentSource));
+        moved = true;
+      }
+
+      if (currentSource !== null) {
+        GameState.board[currentSource].enemyPieces.push(checker);
+      }
+
+      const duration = moved ? addMoveAnimation(checker, path, "enemy") : 0;
+      return { moved, pushed, duration };
+    }
+
+    function resolveEnemyStep(checker, source) {
+      const preferredDestination = source - 2;
+      const preferred = getEnemyLanding(checker, source, preferredDestination, 2);
+      if (preferred.type !== "blocked") return preferred;
+
+      const fallbackDestination = source - 1;
+      return getEnemyLanding(checker, source, fallbackDestination, 1);
+    }
+
+    function getEnemyLanding(checker, source, destination, distance) {
+      if (destination < 0) return { type: "score" };
+
+      const targetPip = GameState.board[destination];
+      if (!targetPip) return { type: "blocked" };
+
+      const isGate = targetPip.playerPieces.length >= 2;
+      const isRam = getEnemyAbility(checker) === EnemyAbility.RAM;
+      if (isGate && !(isRam && distance === 2)) return { type: "blocked" };
+
+      let pushed = false;
+      if (isGate && isRam) {
+        const victimIndex = findRamVictimIndex(targetPip);
+        if (victimIndex === -1) return { type: "blocked" };
+        const [victim] = targetPip.playerPieces.splice(victimIndex, 1);
+        GameState.bar.player.push(victim);
+        pushed = true;
+        addFloatingText(getPipCenter(destination).x, getPipCenter(destination).y, "Ram push", Theme.danger, 0.9);
+      } else if (targetPip.playerPieces.length === 1) {
+        const victim = targetPip.playerPieces.pop();
+        if (victim.type === CheckerType.ANCHOR) {
+          targetPip.playerPieces.push(victim);
+          return { type: "blocked" };
+        }
+        if (victim.type === CheckerType.GLASS) {
+          victim.destroyed = true;
+          GameState.destroyed.push(victim);
+          addFloatingText(getPipCenter(destination).x, getPipCenter(destination).y, "Glass shattered", Theme.blue, 0.9);
+        } else {
+          GameState.bar.player.push(victim);
+          addFloatingText(getPipCenter(destination).x, getPipCenter(destination).y, "Hit to bar", Theme.danger, 0.9);
+        }
+      }
+
+      return { type: "pip", destination, pushed };
+    }
+
+    function findRamVictimIndex(pip) {
+      for (let i = pip.playerPieces.length - 1; i >= 0; i--) {
+        if (pip.playerPieces[i].type !== CheckerType.ANCHOR) return i;
+      }
+      return -1;
     }
 
     function reenterPendingEnemies(pendingEnemies) {
@@ -568,15 +688,15 @@ const canvas = document.getElementById("gameCanvas");
 
       if (GameState.dice.length === 0) {
         GameState.message = GameState.score.current >= GameState.score.target
-          ? `Target beaten. End turn to collect.`
+          ? `Target reached. Press Win to visit the shop.`
           : `Move scored ${GameState.score.lastMove.toLocaleString()}. End turn to roll again.`;
       } else if (!hasAnyLegalMove()) {
         GameState.message = GameState.score.current >= GameState.score.target
-          ? "No legal moves left. End turn to collect."
+          ? "Target reached. Press Win to visit the shop."
           : "No legal moves left. End turn to roll again.";
       } else {
         GameState.message = GameState.score.current >= GameState.score.target
-          ? `Target beaten. You can keep scoring or end turn to collect.`
+          ? `Target reached. You can keep scoring or press Win to visit the shop.`
           : `Move scored ${GameState.score.lastMove.toLocaleString()}. ${GameState.dice.length} dice left.`;
       }
     }
@@ -659,7 +779,7 @@ const canvas = document.getElementById("gameCanvas");
       GameState.validTargets = [];
 
       if (GameState.score.current >= GameState.score.target) {
-        winRound();
+        collectWinAndContinue();
         return;
       }
 
@@ -669,12 +789,6 @@ const canvas = document.getElementById("gameCanvas");
       }
 
       resolveEnemyTurn();
-      if (GameState.turnPhase === TurnPhase.ROUND_OVER) return;
-
-      GameState.turn += 1;
-      GameState.turnPhase = TurnPhase.ROLLING;
-      GameState.message = "End turn. Dice are rolling again.";
-      queueAutoRoll();
     }
 
     function winRound() {
@@ -694,6 +808,28 @@ const canvas = document.getElementById("gameCanvas");
       } else {
         GameState.message = "Blind cleared. Count the Akçe, then continue to the shop.";
       }
+    }
+
+    function collectWinAndContinue() {
+      GameState.selected = null;
+      GameState.validTargets = [];
+      GameState.dice = [];
+      GameState.rolledDice = [];
+      GameState.diceBodies = [];
+      GameState.roundPayout = calculateRoundPayout();
+      GameState.payoutStartedAt = performance.now();
+      GameState.money += GameState.roundPayout.total;
+
+      if (GameState.levelIndex >= LevelConfig.length - 1) {
+        GameState.turnPhase = TurnPhase.ROUND_OVER;
+        GameState.runWon = true;
+        GameState.message = "Run complete. The Boss Blind is beaten.";
+        return;
+      }
+
+      const earned = GameState.roundPayout.total;
+      enterShop();
+      GameState.message = `Blind cleared. +${earned} Akçe paid out. Buy upgrades, then start the next blind.`;
     }
 
     function calculateRoundPayout() {
@@ -856,6 +992,7 @@ const canvas = document.getElementById("gameCanvas");
       drawBoard(width, height);
       drawDiceBodies();
       drawLeftMenu(width, height);
+      drawEnemyTurnPreview();
       drawMoveAnimations();
       drawScoreBursts();
       drawFloatingTexts();
@@ -870,35 +1007,35 @@ const canvas = document.getElementById("gameCanvas");
 
     function drawBackground(width, height) {
       const time = performance.now() / 1000;
-      const gradient = ctx.createConicGradient(time * 0.12, width * 0.52, height * 0.45);
-      gradient.addColorStop(0, "#31063f");
-      gradient.addColorStop(0.18, "#0c5f82");
-      gradient.addColorStop(0.35, "#ff2a83");
-      gradient.addColorStop(0.52, "#ffe15c");
-      gradient.addColorStop(0.68, "#35f2a4");
-      gradient.addColorStop(0.84, "#7c3dff");
-      gradient.addColorStop(1, "#31063f");
+      const gradient = ctx.createRadialGradient(width * 0.52, height * 0.42, 60, width * 0.52, height * 0.42, Math.max(width, height));
+      gradient.addColorStop(0, "#13282e");
+      gradient.addColorStop(0.32, "#0c1b20");
+      gradient.addColorStop(0.62, "#081216");
+      gradient.addColorStop(1, "#03080b");
       ctx.fillStyle = gradient;
       ctx.fillRect(0, 0, width, height);
 
       ctx.save();
-      ctx.globalAlpha = 0.34;
-      for (let i = 0; i < 7; i++) {
-        const cx = width * (0.1 + i * 0.15);
-        const cy = height * (0.18 + ((i * 37) % 60) / 100);
-        const rings = ctx.createRadialGradient(cx, cy, 4, cx, cy, 260 + i * 18);
-        rings.addColorStop(0, "rgba(255,255,255,0.35)");
-        rings.addColorStop(0.18, "rgba(255,255,255,0.03)");
-        rings.addColorStop(0.19, "rgba(0,0,0,0.18)");
-        rings.addColorStop(0.36, "rgba(255,255,255,0.04)");
-        rings.addColorStop(0.37, "rgba(0,0,0,0.15)");
-        rings.addColorStop(1, "rgba(255,255,255,0)");
-        ctx.fillStyle = rings;
-        ctx.fillRect(0, 0, width, height);
+      ctx.globalAlpha = 0.22;
+      ctx.strokeStyle = "rgba(201,138,67,0.32)";
+      ctx.lineWidth = 1;
+      for (let x = -40 + (time * 4) % 86; x < width + 80; x += 86) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x + height * 0.42, height);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 0.16;
+      ctx.strokeStyle = "rgba(37,185,201,0.30)";
+      for (let y = 44; y < height; y += 96) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(width, y + Math.sin(time + y) * 6);
+        ctx.stroke();
       }
       ctx.restore();
 
-      ctx.fillStyle = "rgba(22, 8, 23, 0.34)";
+      ctx.fillStyle = "rgba(3, 8, 11, 0.38)";
       ctx.fillRect(0, 0, width, height);
     }
 
@@ -916,7 +1053,7 @@ const canvas = document.getElementById("gameCanvas");
       ctx.textBaseline = "middle";
       ctx.fillStyle = Theme.darkInk;
       ctx.font = "800 28px Inter, sans-serif";
-      ctx.fillText("Pipjack", 126, 35);
+      ctx.fillText("Tavlatus", 126, 35);
 
       ctx.font = "650 13px Inter, sans-serif";
       ctx.fillStyle = "#67416c";
@@ -961,12 +1098,16 @@ const canvas = document.getElementById("gameCanvas");
     }
 
     function drawProgressBar(x, y, width, height, progress) {
-      ctx.fillStyle = "rgba(27,16,32,0.14)";
-      roundRect(x, y, width, height, height / 2);
+      ctx.fillStyle = "rgba(0,0,0,0.34)";
+      roundRect(x, y, width, height, 2);
       ctx.fill();
 
-      ctx.fillStyle = Theme.gold;
-      roundRect(x, y, width * progress, height, height / 2);
+      const progressGradient = ctx.createLinearGradient(x, y, x + width, y);
+      progressGradient.addColorStop(0, Theme.copper);
+      progressGradient.addColorStop(0.52, Theme.gold);
+      progressGradient.addColorStop(1, Theme.accent);
+      ctx.fillStyle = progressGradient;
+      roundRect(x, y, width * progress, height, 2);
       ctx.fill();
     }
 
@@ -977,14 +1118,19 @@ const canvas = document.getElementById("gameCanvas");
       const boardWidth = width - boardLeft - layout.boardPaddingX;
       const innerTop = boardTop + layout.boardPaddingY;
       const innerHeight = boardHeight - layout.boardPaddingY * 2;
-      const barWidth = Math.max(62, boardWidth * 0.07);
-      const halfGap = 14;
-      const tableWidth = (boardWidth - barWidth - halfGap * 2) / 2;
+      const utilityGap = 12;
+      const centerGap = 18;
+      const barWidth = 52;
+      const bearOffWidth = 58;
+      const utilityWidth = barWidth + bearOffWidth + utilityGap;
+      const tableWidth = (boardWidth - utilityWidth - centerGap - utilityGap * 2) / 2;
       const pipWidth = (tableWidth - layout.pipGap * 5) / 6;
       const pipHeight = Math.min(305, innerHeight * 0.62);
       const leftTableX = boardLeft;
-      const barX = boardLeft + tableWidth + halfGap;
-      const rightTableX = barX + barWidth + halfGap;
+      const centerX = boardLeft + tableWidth + centerGap / 2;
+      const rightTableX = boardLeft + tableWidth + centerGap;
+      const barX = rightTableX + tableWidth + utilityGap;
+      const bearOffX = barX + barWidth + utilityGap;
       layout.boardBounds = {
         x: boardLeft - 10,
         y: boardTop + 24,
@@ -992,27 +1138,28 @@ const canvas = document.getElementById("gameCanvas");
         height: boardHeight - 48
       };
 
-      ctx.fillStyle = "rgba(0,0,0,0.22)";
-      roundRect(boardLeft - 18, boardTop + 16, boardWidth + 36, boardHeight - 32, 12);
+      ctx.fillStyle = "rgba(0,0,0,0.42)";
+      roundRect(boardLeft - 18, boardTop + 16, boardWidth + 36, boardHeight - 32, 6);
       ctx.fill();
       const boardGradient = ctx.createLinearGradient(boardLeft, boardTop, boardLeft + boardWidth, boardTop + boardHeight);
-      boardGradient.addColorStop(0, "#4f155f");
-      boardGradient.addColorStop(0.28, "#ffcc46");
-      boardGradient.addColorStop(0.52, "#21102d");
-      boardGradient.addColorStop(0.74, "#12b4d8");
-      boardGradient.addColorStop(1, "#ff3f72");
+      boardGradient.addColorStop(0, "#1c2a27");
+      boardGradient.addColorStop(0.12, "#c98a43");
+      boardGradient.addColorStop(0.5, "#071014");
+      boardGradient.addColorStop(0.88, "#a95739");
+      boardGradient.addColorStop(1, "#253333");
       ctx.fillStyle = boardGradient;
-      roundRect(boardLeft - 10, boardTop + 24, boardWidth + 20, boardHeight - 48, 10);
+      roundRect(boardLeft - 10, boardTop + 24, boardWidth + 20, boardHeight - 48, 7);
       ctx.fill();
-      ctx.strokeStyle = "rgba(255,248,231,0.66)";
+      ctx.strokeStyle = "rgba(228,183,90,0.78)";
       ctx.lineWidth = 2;
       ctx.stroke();
+      drawArtDecoCorners(boardLeft - 10, boardTop + 24, boardWidth + 20, boardHeight - 48, 28);
 
-      drawTableField(leftTableX, innerTop, tableWidth, innerHeight, "rgba(10, 3, 16, 0.92)");
-      drawTableField(rightTableX, innerTop, tableWidth, innerHeight, "rgba(10, 3, 16, 0.89)");
+      drawTableField(leftTableX, innerTop, tableWidth, innerHeight, "rgba(5, 20, 22, 0.94)");
+      drawTableField(rightTableX, innerTop, tableWidth, innerHeight, "rgba(5, 20, 22, 0.94)");
       drawBoardFractal(leftTableX - 4, innerTop - 10, tableWidth + 8, innerHeight + 20);
       drawBoardFractal(rightTableX - 4, innerTop - 10, tableWidth + 8, innerHeight + 20);
-      drawCenterRail(boardLeft, innerTop, boardWidth, innerHeight);
+      drawCenterRail(centerX - centerGap / 2, innerTop - 10, centerGap, innerHeight + 20);
 
       const topRow = Array.from({ length: 12 }, (_, i) => 12 + i);
       const bottomRow = Array.from({ length: 12 }, (_, i) => 11 - i);
@@ -1021,14 +1168,53 @@ const canvas = document.getElementById("gameCanvas");
       drawPipRow(bottomRow, leftTableX, rightTableX, innerTop + innerHeight - pipHeight, pipWidth, pipHeight, "up");
 
       drawBar(barX, innerTop, barWidth, innerHeight);
-      drawBearOff(boardLeft + boardWidth - 58, innerTop, innerHeight);
+      drawBearOff(bearOffX, innerTop, innerHeight, bearOffWidth);
+    }
+
+    function drawArtDecoCorners(x, y, width, height, size) {
+      ctx.save();
+      ctx.strokeStyle = "rgba(228,183,90,0.58)";
+      ctx.lineWidth = 1.5;
+      const corners = [
+        [x + 12, y + 12, 1, 1],
+        [x + width - 12, y + 12, -1, 1],
+        [x + width - 12, y + height - 12, -1, -1],
+        [x + 12, y + height - 12, 1, -1]
+      ];
+      for (const [cx, cy, sx, sy] of corners) {
+        ctx.beginPath();
+        ctx.moveTo(cx, cy + sy * size);
+        ctx.lineTo(cx, cy);
+        ctx.lineTo(cx + sx * size, cy);
+        ctx.moveTo(cx + sx * 8, cy + sy * size);
+        ctx.lineTo(cx + sx * size, cy + sy * 8);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function drawInsetFrame(x, y, width, height) {
+      ctx.save();
+      ctx.strokeStyle = "rgba(228,183,90,0.34)";
+      ctx.lineWidth = 1;
+      roundRect(x, y, width, height, 3);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x + 6, y + 18);
+      ctx.lineTo(x + width / 2, y + 6);
+      ctx.lineTo(x + width - 6, y + 18);
+      ctx.moveTo(x + 6, y + height - 18);
+      ctx.lineTo(x + width / 2, y + height - 6);
+      ctx.lineTo(x + width - 6, y + height - 18);
+      ctx.stroke();
+      ctx.restore();
     }
 
     function drawTableField(x, y, width, height, fill) {
       ctx.fillStyle = fill;
-      roundRect(x - 4, y - 10, width + 8, height + 20, 7);
+      roundRect(x - 4, y - 10, width + 8, height + 20, 4);
       ctx.fill();
-      ctx.strokeStyle = "rgba(255,248,231,0.14)";
+      ctx.strokeStyle = "rgba(201,138,67,0.46)";
       ctx.lineWidth = 1;
       ctx.stroke();
     }
@@ -1044,25 +1230,18 @@ const canvas = document.getElementById("gameCanvas");
       roundRect(x, y, w, h, 7);
       ctx.clip();
 
-      // Base: slow-rotating conic gradient (deep purples/teals/crimsons)
-      const baseGrad = ctx.createConicGradient(t * 0.06, cx, cy);
-      baseGrad.addColorStop(0,    "#180328");
-      baseGrad.addColorStop(0.2,  "#081832");
-      baseGrad.addColorStop(0.45, "#22080c");
-      baseGrad.addColorStop(0.65, "#061c14");
-      baseGrad.addColorStop(0.85, "#1a0430");
-      baseGrad.addColorStop(1,    "#180328");
+      const baseGrad = ctx.createRadialGradient(cx, cy, 20, cx, cy, S * 0.9);
+      baseGrad.addColorStop(0, "#123035");
+      baseGrad.addColorStop(0.58, "#07171b");
+      baseGrad.addColorStop(1, "#040b0e");
       ctx.fillStyle = baseGrad;
       ctx.fillRect(x, y, w, h);
 
-      // Drifting colour pools — screen blend makes them glow into each other
       ctx.globalCompositeOperation = "screen";
       const pools = [
-        [0.25 + Math.sin(t * 0.13) * 0.10, 0.40 + Math.cos(t * 0.09) * 0.15, "rgba(180,0,255,0.34)"],
-        [0.72 + Math.cos(t * 0.11) * 0.09, 0.60 + Math.sin(t * 0.08) * 0.12, "rgba(255,20,90,0.30)"],
-        [0.50 + Math.sin(t * 0.15) * 0.08, 0.22 + Math.cos(t * 0.12) * 0.10, "rgba(0,200,255,0.26)"],
-        [0.14 + Math.cos(t * 0.17) * 0.06, 0.76 + Math.sin(t * 0.14) * 0.10, "rgba(40,255,130,0.22)"],
-        [0.85 + Math.sin(t * 0.10) * 0.05, 0.30 + Math.cos(t * 0.16) * 0.12, "rgba(255,180,0,0.20)"],
+        [0.28 + Math.sin(t * 0.08) * 0.04, 0.52, "rgba(176,28,84,0.24)"],
+        [0.70 + Math.cos(t * 0.07) * 0.04, 0.46, "rgba(0,184,190,0.20)"],
+        [0.50, 0.30 + Math.cos(t * 0.06) * 0.04, "rgba(219,150,63,0.11)"],
       ];
       for (const [rx, ry, color] of pools) {
         const px = x + w * rx;
@@ -1076,12 +1255,10 @@ const canvas = document.getElementById("gameCanvas");
       }
       ctx.globalCompositeOperation = "source-over";
 
-      // Spirograph / hypotrochoid curves — these are the "fractal" weirdness
       const spirogs = [
-        { col: "#ff2b86", a: 0.18, R: 0.38, r: 0.13, d: 0.11, spd: 0.10, ph: 0.0 },
-        { col: "#35f2a4", a: 0.13, R: 0.30, r: 0.10, d: 0.09, spd: 0.07, ph: 2.0 },
-        { col: "#7c3dff", a: 0.15, R: 0.34, r: 0.15, d: 0.14, spd: 0.13, ph: 1.1 },
-        { col: "#ffe15c", a: 0.10, R: 0.22, r: 0.08, d: 0.07, spd: 0.18, ph: 3.5 },
+        { col: "#9e244c", a: 0.22, R: 0.33, r: 0.13, d: 0.11, spd: 0.035, ph: 0.0 },
+        { col: "#0aa0a8", a: 0.18, R: 0.26, r: 0.10, d: 0.09, spd: 0.028, ph: 2.0 },
+        { col: "#c98a43", a: 0.12, R: 0.22, r: 0.08, d: 0.07, spd: 0.04, ph: 3.5 },
       ];
       for (const sg of spirogs) {
         const R = S * sg.R, r = S * sg.r, d = S * sg.d;
@@ -1101,16 +1278,15 @@ const canvas = document.getElementById("gameCanvas");
         ctx.stroke();
       }
 
-      // Coloured hex grid — rows cycle through pink / purple / cyan
-      const cell = 50;
-      const fx = (t * 7) % cell;
-      const fy = (t * 3.5) % (cell * 0.866);
+      const cell = 42;
+      const fx = 0;
+      const fy = 0;
       const gcols = Math.ceil(w / cell) + 3;
       const grows = Math.ceil(h / (cell * 0.866)) + 3;
       ctx.lineWidth = 0.75;
       for (let row = -1; row < grows; row++) {
-        ctx.globalAlpha = 0.09;
-        ctx.strokeStyle = row % 3 === 0 ? "#ff2b86" : row % 3 === 1 ? "#7c3dff" : "#28d4ff";
+        ctx.globalAlpha = 0.075;
+        ctx.strokeStyle = row % 2 === 0 ? "#4d7d7d" : "#89513f";
         for (let col = -1; col < gcols; col++) {
           const hx = x - fx + col * cell + (row % 2 === 0 ? 0 : cell * 0.5);
           const hy = y - fy + row * cell * 0.866;
@@ -1139,24 +1315,37 @@ const canvas = document.getElementById("gameCanvas");
       }
     }
 
-    function drawCenterRail(boardLeft, innerTop, boardWidth, innerHeight) {
-      const railY = innerTop + innerHeight / 2 - 13;
-      ctx.fillStyle = "rgba(27,16,32,0.28)";
-      roundRect(boardLeft - 10, railY, boardWidth + 20, 26, 4);
+    function drawCenterRail(x, y, width, height) {
+      const railGradient = ctx.createLinearGradient(x, y, x + width, y);
+      railGradient.addColorStop(0, "#4b2c18");
+      railGradient.addColorStop(0.5, "#d49a51");
+      railGradient.addColorStop(1, "#4b2c18");
+      ctx.fillStyle = railGradient;
+      roundRect(x, y, width, height, 3);
       ctx.fill();
-
-      ctx.strokeStyle = "rgba(255,248,231,0.22)";
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(boardLeft, railY + 13);
-      ctx.lineTo(boardLeft + boardWidth, railY + 13);
+      ctx.strokeStyle = "rgba(246,223,170,0.46)";
       ctx.stroke();
+
+      ctx.fillStyle = "#0a1a1d";
+      for (let i = 0; i < 3; i++) {
+        const cy = y + height * (0.24 + i * 0.26);
+        ctx.beginPath();
+        ctx.moveTo(x + width / 2, cy - 9);
+        ctx.lineTo(x + width - 3, cy);
+        ctx.lineTo(x + width / 2, cy + 9);
+        ctx.lineTo(x + 3, cy);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = "rgba(228,183,90,0.78)";
+        ctx.stroke();
+      }
     }
 
     function drawPip(pipIndex, x, y, width, height, direction) {
       const pip = GameState.board[pipIndex];
       const isEven = pipIndex % 2 === 0;
-      const isValid = GameState.validTargets.some((target) => target.type === "pip" && target.index === pipIndex);
+      const validTarget = GameState.validTargets.find((target) => target.type === "pip" && target.index === pipIndex);
+      const isValid = Boolean(validTarget);
       const isSelected = GameState.selected?.source === pipIndex;
       const tipY = direction === "down" ? y + height : y;
       const baseY = direction === "down" ? y : y + height;
@@ -1167,24 +1356,40 @@ const canvas = document.getElementById("gameCanvas");
       ctx.lineTo(x + width / 2, tipY);
       ctx.closePath();
       const pipGradient = ctx.createLinearGradient(x, y, x + width, y + height);
-      const baseColor = pip.locked ? "#6d6172" : isEven ? Theme.pipA : Theme.pipB;
-      pipGradient.addColorStop(0, baseColor);
-      pipGradient.addColorStop(0.52, isEven ? "#ff5aa5" : "#8d4dff");
-      pipGradient.addColorStop(1, baseColor);
+      const baseColor = pip.locked ? "#536061" : isEven ? "#07858e" : "#8d1f45";
+      pipGradient.addColorStop(0, pip.locked ? "#75807b" : isEven ? "#17bec6" : "#bd365e");
+      pipGradient.addColorStop(0.56, baseColor);
+      pipGradient.addColorStop(1, isEven ? "#063a45" : "#3c1230");
       ctx.fillStyle = pipGradient;
-      ctx.globalAlpha = pip.locked ? 0.62 : 0.95;
+      ctx.globalAlpha = pip.locked ? 0.54 : 0.92;
       ctx.fill();
       ctx.globalAlpha = 1;
 
-      ctx.strokeStyle = isValid ? Theme.valid : "rgba(27,16,32,0.22)";
-      ctx.lineWidth = isValid ? 3 : 1;
+      ctx.strokeStyle = isValid ? Theme.valid : "rgba(228,183,90,0.66)";
+      ctx.lineWidth = isValid ? 2.4 : 1.2;
       ctx.stroke();
 
+      ctx.save();
+      ctx.clip();
+      ctx.globalAlpha = 0.22;
+      ctx.strokeStyle = isEven ? "rgba(246,223,170,0.42)" : "rgba(37,185,201,0.34)";
+      ctx.lineWidth = 0.8;
+      const cx = x + width / 2;
+      for (let i = 0; i < 5; i++) {
+        const offset = (i - 2) * width * 0.18;
+        ctx.beginPath();
+        ctx.moveTo(cx + offset, baseY);
+        ctx.lineTo(cx, tipY + (direction === "down" ? -height * 0.18 : height * 0.18));
+        ctx.stroke();
+      }
+      ctx.restore();
+
       if (isValid) {
-        const pulse = 0.13 + Math.sin(performance.now() / 220) * 0.04;
-        ctx.fillStyle = `rgba(92, 143, 63, ${pulse + 0.04})`;
+        const pulse = 0.16 + Math.sin(performance.now() / 260) * 0.035;
+        ctx.fillStyle = `rgba(112, 227, 95, ${pulse})`;
         roundRect(x + 5, y + 5, width - 10, height - 10, 5);
         ctx.fill();
+        drawTargetPreviewBadge(x + width / 2, direction === "down" ? y + height - 42 : y + 42, validTarget);
       }
 
       if (isSelected) {
@@ -1195,7 +1400,7 @@ const canvas = document.getElementById("gameCanvas");
       }
 
       if (GameState.hover.tooltip?.kind === "pip" && GameState.hover.tooltip.pipIndex === pipIndex) {
-        ctx.strokeStyle = "#fff8e7";
+        ctx.strokeStyle = Theme.ink;
         ctx.lineWidth = 2;
         roundRect(x + 3, y + 3, width - 6, height - 6, 5);
         ctx.stroke();
@@ -1228,11 +1433,13 @@ const canvas = document.getElementById("gameCanvas");
 
     function drawLockedMarker(cx, cy) {
       ctx.save();
-      ctx.fillStyle = "rgba(251,250,246,0.78)";
+      ctx.fillStyle = "rgba(9, 24, 27, 0.86)";
       roundRect(cx - 22, cy - 14, 44, 28, 5);
       ctx.fill();
-      ctx.fillStyle = Theme.danger;
-      ctx.font = "900 13px Inter, sans-serif";
+      ctx.strokeStyle = Theme.brass;
+      ctx.stroke();
+      ctx.fillStyle = Theme.ink;
+      ctx.font = "900 12px Georgia, serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText("LOCK", cx, cy + 1);
@@ -1243,17 +1450,17 @@ const canvas = document.getElementById("gameCanvas");
       ctx.save();
       ctx.shadowColor = modifier.color;
       ctx.shadowBlur = 5;
-      ctx.fillStyle = modifier.color;
+      ctx.fillStyle = modifier.id === "forge" ? "#b77238" : "#0d8078";
       ctx.beginPath();
       ctx.arc(cx, cy, 15, 0, Math.PI * 2);
       ctx.fill();
       ctx.shadowBlur = 0;
-      ctx.strokeStyle = "rgba(251,250,246,0.9)";
+      ctx.strokeStyle = "rgba(246,223,170,0.9)";
       ctx.lineWidth = 2;
       ctx.stroke();
 
       ctx.fillStyle = Theme.ink;
-      ctx.font = "900 12px Inter, sans-serif";
+      ctx.font = "900 12px Georgia, serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(modifier.id === "forge" ? "F" : "M", cx, cy + 1);
@@ -1262,18 +1469,18 @@ const canvas = document.getElementById("gameCanvas");
 
     function drawIntentIcon(intent, cx, cy) {
       ctx.save();
-      ctx.fillStyle = "rgba(251,250,246,0.9)";
-      ctx.strokeStyle = Theme.gold;
+      ctx.fillStyle = "rgba(9,24,27,0.9)";
+      ctx.strokeStyle = Theme.brass;
       ctx.lineWidth = 1.5;
       roundRect(cx - 24, cy - 13, 48, 26, 5);
       ctx.fill();
       ctx.stroke();
 
       ctx.fillStyle = Theme.ink;
-      ctx.font = "850 12px Inter, sans-serif";
+      ctx.font = "850 11px Georgia, serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(intent.id === "mover" ? "MOVE 2" : "HAZARD", cx, cy + 1);
+      ctx.fillText(intent.id === "ram" ? "RAM" : "PAWN", cx, cy + 1);
       ctx.restore();
     }
 
@@ -1299,16 +1506,18 @@ const canvas = document.getElementById("gameCanvas");
       const startY = direction === "down" ? pipY + radius + 12 : pipY + pipHeight - radius - 12;
 
       for (let i = 0; i < visibleCount; i++) {
-        const cy = direction === "down" ? startY + i * step : startY - i * step;
-        drawChecker(cx, cy, radius, owner, visibleStack[i]);
+        const checker = visibleStack[i];
+        const hover = getEnemyIntentHover(checker);
+        const cy = (direction === "down" ? startY + i * step : startY - i * step) + hover;
+        drawChecker(cx, cy, radius, owner, checker);
         GameState.checkerHitAreas.push({
           x: cx - radius,
           y: cy - radius,
           width: radius * 2,
           height: radius * 2,
-          checker: visibleStack[i],
+          checker,
           owner,
-          tooltip: getCheckerTooltip(visibleStack[i], owner)
+          tooltip: getCheckerTooltip(checker, owner)
         });
       }
 
@@ -1324,115 +1533,204 @@ const canvas = document.getElementById("gameCanvas");
       }
     }
 
+    function getEnemyIntentHover(checker) {
+      if (!isEnemyPreviewVisible() || !isEnemyIntentChecker(checker)) return 0;
+      return Math.sin(performance.now() / 420 + checker.id.length) * 5 - 3;
+    }
+
+    function isEnemyPreviewVisible() {
+      return GameState.turnPhase === TurnPhase.MOVING;
+    }
+
+    function isEnemyIntentChecker(checker) {
+      return getEnemyMovesForTurn().some((move) => move.checkerId === checker.id);
+    }
+
+    function drawEnemyTurnPreview() {
+      if (!isEnemyPreviewVisible()) return;
+
+      const intents = getEnemyMovesForTurn()
+        .map((move) => {
+          const current = findEnemyCheckerPosition(move.checkerId);
+          if (!current) return null;
+          return {
+            ...move,
+            ability: getEnemyAbility(current.pip.enemyPieces[current.index]),
+            destination: getEnemyPreviewDestination(current.pip.index, current.pip.enemyPieces[current.index])
+          };
+        })
+        .filter(Boolean);
+
+      for (const intent of intents) {
+        const center = intent.destination === "score"
+          ? getBearOffCenter()
+          : getPipCenter(intent.destination);
+        ctx.save();
+        ctx.globalAlpha = 0.62 + Math.sin(performance.now() / 360 + intent.source) * 0.16;
+        ctx.strokeStyle = Theme.danger;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(center.x, center.y, layout.checkerRadius + 13, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.globalAlpha *= 0.18;
+        ctx.fillStyle = Theme.danger;
+        ctx.beginPath();
+        ctx.arc(center.x, center.y, layout.checkerRadius + 9, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    function getEnemyPreviewDestination(source, checker) {
+      let current = source;
+      for (let step = 0; step < 3; step++) {
+        const result = getEnemyPreviewStep(checker, current);
+        if (result.type === "blocked") break;
+        if (result.type === "score") return "score";
+        current = result.destination;
+      }
+      return current;
+    }
+
+    function getEnemyPreviewStep(checker, source) {
+      const preferred = getEnemyPreviewLanding(checker, source - 2, 2);
+      if (preferred.type !== "blocked") return preferred;
+      return getEnemyPreviewLanding(checker, source - 1, 1);
+    }
+
+    function getEnemyPreviewLanding(checker, destination, distance) {
+      if (destination < 0) return { type: "score" };
+      const targetPip = GameState.board[destination];
+      if (!targetPip) return { type: "blocked" };
+
+      const isGate = targetPip.playerPieces.length >= 2;
+      const isRam = getEnemyAbility(checker) === EnemyAbility.RAM;
+      if (isGate && !(isRam && distance === 2 && findRamVictimIndex(targetPip) !== -1)) return { type: "blocked" };
+      if (targetPip.playerPieces.length === 1 && targetPip.playerPieces[0].type === CheckerType.ANCHOR) return { type: "blocked" };
+      return { type: "pip", destination };
+    }
+
     function drawChecker(cx, cy, radius, owner, checker) {
       const palette = getCheckerPalette(owner, checker);
-      const depth = radius * 0.32;
+      const depth = radius * 0.18;
 
       ctx.save();
 
-      // Ground shadow
       ctx.fillStyle = palette.shadow;
-      ctx.globalAlpha = 0.42;
+      ctx.globalAlpha = 0.48;
       ctx.beginPath();
-      ctx.ellipse(cx + radius * 0.16, cy + depth * 1.15, radius * 1.02, radius * 0.32, 0, 0, Math.PI * 2);
+      ctx.ellipse(cx + radius * 0.12, cy + depth * 1.55, radius * 0.98, radius * 0.28, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.globalAlpha = 1;
 
-      // Side cylinder (the chip's "depth")
       const sideGradient = ctx.createLinearGradient(cx, cy, cx, cy + depth);
-      sideGradient.addColorStop(0, palette.mid);
-      sideGradient.addColorStop(0.55, palette.dark);
+      sideGradient.addColorStop(0, palette.rim);
+      sideGradient.addColorStop(0.46, palette.dark);
       sideGradient.addColorStop(1, palette.edge);
       ctx.fillStyle = sideGradient;
       ctx.beginPath();
-      // body footprint: full ellipse at +depth, capped by top circle
-      ctx.ellipse(cx, cy + depth, radius, radius * 0.36, 0, 0, Math.PI, false);
-      ctx.lineTo(cx - radius, cy);
-      ctx.arc(cx, cy, radius, Math.PI, 0, true);
+      ctx.ellipse(cx, cy + depth, radius * 0.98, radius * 0.30, 0, 0, Math.PI, false);
+      ctx.lineTo(cx - radius * 0.98, cy);
+      ctx.arc(cx, cy, radius * 0.98, Math.PI, 0, true);
       ctx.closePath();
       ctx.fill();
 
-      // Subtle pulse glow for moving enemies (kept — gameplay tell)
-      if (owner === "enemy" && checker.ability === "mover") {
+      if (owner === "enemy" && getEnemyAbility(checker) === EnemyAbility.RAM) {
         ctx.save();
-        ctx.shadowColor = "#ff2b86";
-        ctx.shadowBlur = radius * 1.6;
-        ctx.globalAlpha = 0.18 + Math.sin(performance.now() / 380) * 0.08;
-        ctx.fillStyle = "#ff2b86";
+        ctx.shadowColor = Theme.danger;
+        ctx.shadowBlur = radius * 1.35;
+        ctx.globalAlpha = 0.14 + Math.sin(performance.now() / 380) * 0.06;
+        ctx.fillStyle = Theme.danger;
         ctx.beginPath();
-        ctx.arc(cx, cy, radius * 1.02, 0, Math.PI * 2);
+        ctx.arc(cx, cy, radius * 1.04, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
       }
 
-      // Top disc (radial gradient — fake light from upper-left)
-      const topGradient = ctx.createRadialGradient(
-        cx - radius * 0.38, cy - radius * 0.46, radius * 0.06,
-        cx + radius * 0.08, cy + radius * 0.12, radius * 1.05
-      );
-      topGradient.addColorStop(0, palette.light);
-      topGradient.addColorStop(0.45, palette.base);
-      topGradient.addColorStop(1, palette.mid);
-      ctx.fillStyle = topGradient;
+      ctx.fillStyle = palette.edge;
       ctx.beginPath();
       ctx.arc(cx, cy, radius, 0, Math.PI * 2);
       ctx.fill();
 
-      // Outer dark edge
-      ctx.strokeStyle = palette.edge;
-      ctx.lineWidth = Math.max(2, radius * 0.10);
+      const rimGradient = ctx.createRadialGradient(cx - radius * 0.32, cy - radius * 0.36, radius * 0.08, cx, cy, radius);
+      rimGradient.addColorStop(0, palette.rimLight || palette.light);
+      rimGradient.addColorStop(0.48, palette.rim);
+      rimGradient.addColorStop(1, palette.dark);
+      ctx.fillStyle = rimGradient;
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius * 0.91, 0, Math.PI * 2);
+      ctx.fill();
+
+      drawTokenRimMarks(cx, cy, radius, palette);
+
+      const topGradient = ctx.createRadialGradient(cx - radius * 0.25, cy - radius * 0.30, radius * 0.04, cx, cy, radius * 0.78);
+      topGradient.addColorStop(0, palette.light);
+      topGradient.addColorStop(0.62, palette.base);
+      topGradient.addColorStop(1, palette.mid);
+      ctx.fillStyle = topGradient;
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius * 0.68, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = palette.dark;
+      ctx.lineWidth = Math.max(1.6, radius * 0.07);
       ctx.stroke();
 
-      // Inner recessed ring (chip styling — subtle, vector-clean)
-      ctx.strokeStyle = palette.dark;
-      ctx.globalAlpha = 0.55;
-      ctx.lineWidth = Math.max(1.2, radius * 0.06);
+      ctx.strokeStyle = palette.rimLight || palette.rim;
+      ctx.globalAlpha = 0.72;
+      ctx.lineWidth = Math.max(1, radius * 0.035);
       ctx.beginPath();
-      ctx.arc(cx, cy, radius * 0.72, 0, Math.PI * 2);
+      ctx.arc(cx, cy, radius * 0.49, 0, Math.PI * 2);
       ctx.stroke();
       ctx.globalAlpha = 1;
 
-      // Specular highlight crescent (upper-left)
       ctx.save();
       ctx.beginPath();
-      ctx.arc(cx, cy, radius * 0.93, 0, Math.PI * 2);
+      ctx.arc(cx, cy, radius * 0.66, 0, Math.PI * 2);
       ctx.clip();
-      const hl = ctx.createRadialGradient(
-        cx - radius * 0.4, cy - radius * 0.5, radius * 0.04,
-        cx - radius * 0.4, cy - radius * 0.5, radius * 0.8
-      );
-      hl.addColorStop(0, "rgba(255,255,255,0.55)");
-      hl.addColorStop(0.55, "rgba(255,255,255,0.05)");
-      hl.addColorStop(1, "rgba(255,255,255,0)");
-      ctx.fillStyle = hl;
+      ctx.globalAlpha = 0.18;
+      ctx.fillStyle = palette.light;
       ctx.beginPath();
-      ctx.arc(cx - radius * 0.32, cy - radius * 0.36, radius * 0.7, 0, Math.PI * 2);
+      ctx.ellipse(cx - radius * 0.24, cy - radius * 0.30, radius * 0.28, radius * 0.12, -0.45, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
 
-      // Tiny bottom-right ambient bounce (very subtle)
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(cx, cy, radius * 0.93, 0, Math.PI * 2);
-      ctx.clip();
-      const bounce = ctx.createRadialGradient(
-        cx + radius * 0.45, cy + radius * 0.42, radius * 0.04,
-        cx + radius * 0.45, cy + radius * 0.42, radius * 0.7
-      );
-      bounce.addColorStop(0, "rgba(255,255,255,0.18)");
-      bounce.addColorStop(1, "rgba(255,255,255,0)");
-      ctx.fillStyle = bounce;
-      ctx.beginPath();
-      ctx.arc(cx + radius * 0.35, cy + radius * 0.34, radius * 0.5, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
+      if (owner === "enemy") {
+        drawSwordIcon(cx, cy, radius * 0.50);
+        if (getEnemyAbility(checker) === EnemyAbility.RAM) {
+          ctx.fillStyle = palette.rimLight || Theme.gold;
+          ctx.font = `900 ${Math.round(radius * 0.34)}px Georgia, serif`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText("R", cx, cy + radius * 0.38);
+        }
+      } else {
+        drawCheckerGlyph(cx, cy, radius, checker.type, palette);
+      }
 
       ctx.restore();
     }
 
+    function drawTokenRimMarks(cx, cy, radius, palette) {
+      ctx.save();
+      ctx.strokeStyle = palette.mark || "rgba(246,223,170,0.72)";
+      ctx.lineWidth = Math.max(1, radius * 0.045);
+      ctx.lineCap = "round";
+      for (let i = 0; i < 8; i++) {
+        const angle = (Math.PI * 2 * i) / 8 + Math.PI / 8;
+        const inner = radius * 0.76;
+        const outer = radius * 0.88;
+        ctx.beginPath();
+        ctx.moveTo(cx + Math.cos(angle) * inner, cy + Math.sin(angle) * inner);
+        ctx.lineTo(cx + Math.cos(angle) * outer, cy + Math.sin(angle) * outer);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
     function drawPipNumber(pipIndex, cx, cy) {
-      ctx.fillStyle = "rgba(255,248,231,0.38)";
-      ctx.font = "800 12px Inter, sans-serif";
+      ctx.fillStyle = "rgba(246,223,170,0.72)";
+      ctx.font = "900 13px Georgia, serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(String(pipIndex + 1), cx, cy);
@@ -1456,33 +1754,39 @@ const canvas = document.getElementById("gameCanvas");
       const isSelected = GameState.selected?.source === "bar";
 
       const barGradient = ctx.createLinearGradient(x, y, x + width, y + height);
-      barGradient.addColorStop(0, "#3d1552");
-      barGradient.addColorStop(0.5, "#130a1d");
-      barGradient.addColorStop(1, "#3d1552");
-      ctx.fillStyle = isSelected ? "rgba(255,225,92,0.32)" : barGradient;
-      roundRect(x, y, width, height, 7);
+      barGradient.addColorStop(0, "#4b2c18");
+      barGradient.addColorStop(0.22, "#0a1a1d");
+      barGradient.addColorStop(0.78, "#071014");
+      barGradient.addColorStop(1, "#4b2c18");
+      ctx.fillStyle = isSelected ? "rgba(228,183,90,0.28)" : barGradient;
+      roundRect(x, y, width, height, 4);
       ctx.fill();
-      ctx.strokeStyle = isSelected ? Theme.gold : "rgba(255,248,231,0.42)";
+      ctx.strokeStyle = isSelected ? Theme.valid : "rgba(201,138,67,0.72)";
       ctx.lineWidth = isSelected ? 3 : 2;
       ctx.stroke();
+      drawInsetFrame(x + 7, y + 12, width - 14, height - 24);
 
-      ctx.fillStyle = "#fff8e7";
-      ctx.font = "900 14px Inter, sans-serif";
+      ctx.fillStyle = Theme.ink;
+      ctx.font = "900 14px Georgia, serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText("BAR", x + width / 2, innerTop + innerHeight / 2 - 20);
+      ctx.save();
+      ctx.translate(x + width / 2, innerTop + innerHeight / 2 - 18);
+      ctx.rotate(-Math.PI / 2);
+      ctx.fillText("BAR", 0, 0);
+      ctx.restore();
 
-      ctx.fillStyle = "#d9c8e8";
-      ctx.font = "700 12px Inter, sans-serif";
+      ctx.fillStyle = Theme.muted;
+      ctx.font = "800 11px Inter, sans-serif";
       ctx.fillText(`W ${GameState.bar.player.length}`, x + width / 2, innerTop + innerHeight / 2 + 8);
       ctx.fillText(`R ${GameState.bar.enemy.length}`, x + width / 2, innerTop + innerHeight / 2 + 30);
     }
 
-    function drawBearOff(x, innerTop, innerHeight) {
+    function drawBearOff(x, innerTop, innerHeight, width = 54) {
       const area = {
         x,
         y: innerTop + innerHeight / 2 - 78,
-        width: 54,
+        width,
         height: 156
       };
       GameState.bearOffArea = area;
@@ -1492,57 +1796,86 @@ const canvas = document.getElementById("gameCanvas");
         body: `Move beyond pip 24 to bear off. Each bear-off adds +250 Chips before Mult. Borne off: ${GameState.borneOff.length}.${getBearOffPreviewText()}`
       };
       const isValid = GameState.validTargets.some((target) => target.type === "bearOff");
+      const validTarget = GameState.validTargets.find((target) => target.type === "bearOff");
 
-      ctx.fillStyle = isValid ? "rgba(166,255,67,0.24)" : "rgba(255,248,231,0.18)";
-      roundRect(area.x, area.y, area.width, area.height, 7);
+      const columnGradient = ctx.createLinearGradient(x, innerTop - 10, x + width, innerTop + innerHeight + 10);
+      columnGradient.addColorStop(0, "#12262a");
+      columnGradient.addColorStop(0.5, "#071014");
+      columnGradient.addColorStop(1, "#12262a");
+      ctx.fillStyle = columnGradient;
+      roundRect(x, innerTop - 10, width, innerHeight + 20, 4);
       ctx.fill();
-      ctx.strokeStyle = isValid ? Theme.valid : Theme.line;
-      ctx.lineWidth = isValid ? 3 : 1;
+      ctx.strokeStyle = "rgba(201,138,67,0.76)";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      drawInsetFrame(x + 7, innerTop + 10, width - 14, innerHeight - 20);
+
+      ctx.fillStyle = isValid ? "rgba(182,245,83,0.18)" : "rgba(0,0,0,0.22)";
+      roundRect(area.x + 7, area.y, area.width - 14, area.height, 5);
+      ctx.fill();
+      ctx.strokeStyle = isValid ? Theme.valid : "rgba(201,138,67,0.42)";
+      ctx.lineWidth = isValid ? 2 : 1;
       ctx.stroke();
 
       ctx.save();
       ctx.translate(area.x + area.width / 2, area.y + area.height / 2);
       ctx.rotate(-Math.PI / 2);
       ctx.fillStyle = Theme.ink;
-      ctx.font = "850 13px Inter, sans-serif";
+      ctx.font = "900 13px Georgia, serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(`BEAR OFF ${GameState.borneOff.length}`, 0, 0);
       ctx.restore();
+
+      if (validTarget) {
+        drawTargetPreviewBadge(area.x + area.width / 2, area.y + area.height - 28, validTarget);
+      }
     }
 
     function drawLeftMenu(width, height) {
       const x = 18;
-      const y = 72;
+      const y = 18;
       const menuWidth = layout.leftMenuWidth - 36;
       const menuHeight = height - y - 18;
       const level = LevelConfig[GameState.levelIndex];
       const progress = clamp(GameState.score.current / GameState.score.target, 0, 1);
 
       const panelGradient = ctx.createLinearGradient(x, y, x + menuWidth, y + menuHeight);
-      panelGradient.addColorStop(0, "rgba(22,8,23,0.94)");
-      panelGradient.addColorStop(0.48, "rgba(52,14,62,0.92)");
-      panelGradient.addColorStop(1, "rgba(10,7,19,0.96)");
+      panelGradient.addColorStop(0, "rgba(12,33,37,0.98)");
+      panelGradient.addColorStop(0.48, "rgba(6,18,22,0.98)");
+      panelGradient.addColorStop(1, "rgba(9,15,17,0.98)");
       ctx.fillStyle = panelGradient;
-      roundRect(x, y, menuWidth, menuHeight, 14);
+      roundRect(x, y, menuWidth, menuHeight, 6);
       ctx.fill();
-      ctx.strokeStyle = "rgba(255,248,231,0.24)";
+      ctx.strokeStyle = "rgba(201,138,67,0.82)";
       ctx.lineWidth = 2;
       ctx.stroke();
+      drawArtDecoCorners(x, y, menuWidth, menuHeight, 24);
 
-      ctx.fillStyle = Theme.ink;
-      ctx.font = "900 28px Inter, sans-serif";
-      ctx.textAlign = "left";
+      const titleGradient = ctx.createLinearGradient(x + 18, y + 12, x + menuWidth - 18, y + 72);
+      titleGradient.addColorStop(0, "#f5d782");
+      titleGradient.addColorStop(0.52, "#b87836");
+      titleGradient.addColorStop(1, "#f2d69b");
+      ctx.fillStyle = "rgba(3,8,11,0.62)";
+      roundRect(x + 12, y + 12, menuWidth - 24, 68, 4);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(228,183,90,0.46)";
+      ctx.stroke();
+
+      ctx.fillStyle = titleGradient;
+      ctx.font = "900 38px Georgia, serif";
+      ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText("Pipjack", x + 18, y + 32);
+      ctx.fillText("TAVLATUS", x + menuWidth / 2, y + 46);
 
       ctx.fillStyle = Theme.muted;
-      ctx.font = "800 12px Inter, sans-serif";
-      ctx.fillText(`${level.name} / 24 pips`, x + 18, y + 62);
+      ctx.font = "800 11px Inter, sans-serif";
+      ctx.textAlign = "left";
+      ctx.fillText(`${level.name} / 24 pips`, x + 18, y + 102);
 
-      drawProgressBar(x + 18, y + 84, menuWidth - 36, 10, progress);
+      drawProgressBar(x + 18, y + 116, menuWidth - 36, 8, progress);
 
-      let cursorY = y + 126;
+      let cursorY = y + 144;
       drawLeftMetric(x + 18, cursorY, menuWidth - 36, "Score", GameState.score.current.toLocaleString(), Theme.gold);
       cursorY += 56;
       drawLeftMetric(x + 18, cursorY, menuWidth - 36, "Target", GameState.score.target.toLocaleString(), Theme.ink);
@@ -1575,10 +1908,10 @@ const canvas = document.getElementById("gameCanvas");
     }
 
     function drawLeftMetric(x, y, width, label, value, color, iconKind) {
-      ctx.fillStyle = "rgba(255,248,231,0.10)";
-      roundRect(x, y, width, 48, 8);
+      ctx.fillStyle = "rgba(5,18,20,0.88)";
+      roundRect(x, y, width, 48, 3);
       ctx.fill();
-      ctx.strokeStyle = "rgba(255,248,231,0.12)";
+      ctx.strokeStyle = "rgba(201,138,67,0.38)";
       ctx.stroke();
 
       ctx.fillStyle = Theme.muted;
@@ -1588,7 +1921,7 @@ const canvas = document.getElementById("gameCanvas");
       ctx.fillText(label.toUpperCase(), x + 12, y + 15);
 
       ctx.fillStyle = color;
-      ctx.font = "900 22px Inter, sans-serif";
+      ctx.font = "900 23px Georgia, serif";
       ctx.fillText(value, x + 12, y + 33);
 
       if (iconKind === "akce") {
@@ -1611,6 +1944,7 @@ const canvas = document.getElementById("gameCanvas");
       if (GameState.runWon) return "New Run";
       if (GameState.turnPhase === TurnPhase.ROUND_OVER && GameState.roundPayout) return "Continue";
       if (GameState.turnPhase === TurnPhase.SHOP) return "Next Blind";
+      if (GameState.turnPhase === TurnPhase.MOVING && GameState.score.current >= GameState.score.target) return "Win";
       if (GameState.turnPhase === TurnPhase.MOVING || GameState.turnPhase === TurnPhase.EVALUATING) return "End Turn";
       if (GameState.turnPhase === TurnPhase.ROLLING) return "Rolling...";
       if (roundCanAdvance) return "Next Blind";
@@ -1694,7 +2028,7 @@ const canvas = document.getElementById("gameCanvas");
       ctx.fillText("DICE", x, y);
 
       if (!GameState.dice.length) {
-        ctx.fillStyle = "rgba(255,248,231,0.52)";
+        ctx.fillStyle = "rgba(143,176,164,0.62)";
         ctx.font = "750 12px Inter, sans-serif";
         ctx.fillText(GameState.turnPhase === TurnPhase.ROLLING ? "rolling" : "none", x, y + 32);
         return;
@@ -1710,8 +2044,8 @@ const canvas = document.getElementById("gameCanvas");
     }
 
     function drawMessagePanel(x, y, width, height = 112) {
-      ctx.fillStyle = "rgba(255,248,231,0.10)";
-      roundRect(x, y, width, height, 7);
+      ctx.fillStyle = "rgba(5,18,20,0.86)";
+      roundRect(x, y, width, height, 3);
       ctx.fill();
       ctx.strokeStyle = Theme.line;
       ctx.stroke();
@@ -1735,8 +2069,8 @@ const canvas = document.getElementById("gameCanvas");
     }
 
     function drawShopPanelVertical(x, y, width, height) {
-      ctx.fillStyle = "rgba(255,248,231,0.10)";
-      roundRect(x, y, width, height, 7);
+      ctx.fillStyle = "rgba(5,18,20,0.88)";
+      roundRect(x, y, width, height, 3);
       ctx.fill();
       ctx.strokeStyle = Theme.line;
       ctx.stroke();
@@ -1755,8 +2089,8 @@ const canvas = document.getElementById("gameCanvas");
     }
 
     function drawShopPanel(x, y, width) {
-      ctx.fillStyle = "rgba(255,248,231,0.10)";
-      roundRect(x, y, width, 132, 7);
+      ctx.fillStyle = "rgba(5,18,20,0.88)";
+      roundRect(x, y, width, 132, 3);
       ctx.fill();
       ctx.strokeStyle = Theme.line;
       ctx.stroke();
@@ -1793,30 +2127,30 @@ const canvas = document.getElementById("gameCanvas");
       const x = width / 2 - cardW / 2;
       const y = height / 2 - cardH / 2 + Math.sin(t * 2.4) * 4;
       const glow = ctx.createRadialGradient(width / 2, y + 90, 20, width / 2, y + 90, 360);
-      glow.addColorStop(0, "rgba(255,225,92,0.32)");
-      glow.addColorStop(0.5, "rgba(255,43,134,0.16)");
-      glow.addColorStop(1, "rgba(255,43,134,0)");
+      glow.addColorStop(0, "rgba(228,183,90,0.24)");
+      glow.addColorStop(0.5, "rgba(37,185,201,0.10)");
+      glow.addColorStop(1, "rgba(37,185,201,0)");
       ctx.fillStyle = glow;
       ctx.fillRect(0, 0, width, height);
 
       const gradient = ctx.createLinearGradient(x, y, x + cardW, y + cardH);
-      gradient.addColorStop(0, "#fff8e7");
-      gradient.addColorStop(0.48, "#ffe15c");
-      gradient.addColorStop(1, "#ff5aa5");
+      gradient.addColorStop(0, "#173137");
+      gradient.addColorStop(0.48, "#0b1d22");
+      gradient.addColorStop(1, "#3b2417");
       ctx.fillStyle = gradient;
-      roundRect(x, y, cardW, cardH, 12);
+      roundRect(x, y, cardW, cardH, 6);
       ctx.fill();
-      ctx.strokeStyle = "rgba(255,255,255,0.75)";
+      ctx.strokeStyle = "rgba(228,183,90,0.82)";
       ctx.lineWidth = 3;
       ctx.stroke();
 
-      ctx.fillStyle = Theme.darkInk;
+      ctx.fillStyle = Theme.ink;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.font = "950 54px Inter, sans-serif";
       ctx.fillText(GameState.runWon ? "RUN WON" : "BLIND CLEAR", width / 2, y + 74);
       ctx.font = "850 14px Inter, sans-serif";
-      ctx.fillStyle = "#6e2458";
+      ctx.fillStyle = Theme.muted;
       ctx.fillText("PAYOUT", width / 2, y + 122);
 
       const rows = [
@@ -1829,10 +2163,10 @@ const canvas = document.getElementById("gameCanvas");
       ctx.textAlign = "left";
       ctx.font = "850 20px Inter, sans-serif";
       for (const [label, value] of rows) {
-        ctx.fillStyle = "rgba(27,16,32,0.12)";
-        roundRect(x + 62, rowY - 24, cardW - 124, 48, 8);
+        ctx.fillStyle = "rgba(5,18,20,0.82)";
+        roundRect(x + 62, rowY - 24, cardW - 124, 48, 3);
         ctx.fill();
-        ctx.fillStyle = Theme.darkInk;
+        ctx.fillStyle = Theme.ink;
         ctx.fillText(label, x + 86, rowY);
         ctx.textAlign = "right";
         ctx.fillText(value, x + cardW - 86, rowY);
@@ -1841,14 +2175,14 @@ const canvas = document.getElementById("gameCanvas");
       }
 
       ctx.textAlign = "center";
-      ctx.fillStyle = Theme.darkInk;
+      ctx.fillStyle = Theme.ink;
       ctx.font = "950 34px Inter, sans-serif";
       const totalLabel = `+${countedTotal} Akçe`;
       ctx.fillText(totalLabel, width / 2, y + 346);
       const totalW = ctx.measureText(totalLabel).width;
       drawAkceIcon(width / 2 + totalW / 2 + 22, y + 346, 14);
       ctx.font = "750 13px Inter, sans-serif";
-      ctx.fillStyle = "#6e2458";
+      ctx.fillStyle = Theme.muted;
       ctx.fillText(`Akçe now: ${countedCash}`, width / 2, y + 380);
 
       drawButton(width / 2 - 92, y + cardH - 58, 184, 42, GameState.runWon ? "New Run" : "Continue", continueAfterRoundClear, true, "primary");
@@ -1863,17 +2197,17 @@ const canvas = document.getElementById("gameCanvas");
       if (panelW < 560 || panelH < 420) return;
 
       ctx.save();
-      ctx.fillStyle = "rgba(12,4,18,0.52)";
+      ctx.fillStyle = "rgba(3,8,11,0.62)";
       ctx.fillRect(layout.leftMenuWidth, 0, width - layout.leftMenuWidth, height);
 
       const gradient = ctx.createLinearGradient(x, y, x + panelW, y + panelH);
-      gradient.addColorStop(0, "rgba(22,8,23,0.96)");
-      gradient.addColorStop(0.5, "rgba(77,21,95,0.94)");
-      gradient.addColorStop(1, "rgba(12,9,24,0.98)");
+      gradient.addColorStop(0, "rgba(18,48,53,0.98)");
+      gradient.addColorStop(0.5, "rgba(7,16,20,0.98)");
+      gradient.addColorStop(1, "rgba(55,32,19,0.98)");
       ctx.fillStyle = gradient;
-      roundRect(x, y, panelW, panelH, 14);
+      roundRect(x, y, panelW, panelH, 6);
       ctx.fill();
-      ctx.strokeStyle = "rgba(255,248,231,0.28)";
+      ctx.strokeStyle = "rgba(201,138,67,0.72)";
       ctx.lineWidth = 2;
       ctx.stroke();
 
@@ -1920,11 +2254,11 @@ const canvas = document.getElementById("gameCanvas");
       const price = getOfferPrice(offer);
       const affordable = GameState.money >= price;
       const gradient = ctx.createLinearGradient(x, y, x + width, y + height);
-      gradient.addColorStop(0, offer.bought ? "#d5d0db" : "#fff8e7");
-      gradient.addColorStop(0.55, offer.kind === "relic" ? "#ffe15c" : "#8fffe0");
-      gradient.addColorStop(1, offer.kind === "relic" ? "#ff8bd0" : "#8d4dff");
+      gradient.addColorStop(0, offer.bought ? "#536061" : "#f2dfba");
+      gradient.addColorStop(0.55, offer.kind === "relic" ? "#d49a51" : "#80b9af");
+      gradient.addColorStop(1, offer.kind === "relic" ? "#7f2439" : "#0d6870");
       ctx.fillStyle = gradient;
-      roundRect(x, y, width, height, 8);
+      roundRect(x, y, width, height, 4);
       ctx.fill();
       ctx.globalAlpha = affordable || offer.bought ? 1 : 0.58;
       ctx.strokeStyle = offer.bought ? Theme.accent : "rgba(255,255,255,0.58)";
@@ -1967,10 +2301,10 @@ const canvas = document.getElementById("gameCanvas");
 
     function drawButton(x, y, width, height, label, action, enabled = true, variant = "primary") {
       const palette = {
-        primary: enabled ? ["#ff2b86", "#7c3dff", "#fff8e7"] : ["#4c3d55", "#2e2338", "#bdaec8"],
-        secondary: ["#fff8e7", "#ffd857", "#1b1020"],
-        tiny: ["#fff8e7", "#ffcf48", "#1b1020"],
-        tinyActive: ["#35f2a4", "#28d4ff", "#1b1020"]
+        primary: enabled ? ["#7f2439", "#2a1018", "#f6dfaa"] : ["#334145", "#182529", "#8fb0a4"],
+        secondary: ["#0f3b42", "#071416", "#f6dfaa"],
+        tiny: ["#123035", "#0a1a1d", "#f6dfaa"],
+        tinyActive: ["#70e35f", "#178c72", "#071014"]
       };
       const colors = palette[variant] || palette.primary;
       const gradient = ctx.createLinearGradient(x, y, x, y + height);
@@ -1978,14 +2312,15 @@ const canvas = document.getElementById("gameCanvas");
       gradient.addColorStop(1, colors[1]);
 
       ctx.fillStyle = gradient;
-      roundRect(x, y, width, height, 6);
+      roundRect(x, y, width, height, 3);
       ctx.fill();
-      ctx.strokeStyle = enabled ? Theme.line : "rgba(25,24,22,0.06)";
-      ctx.lineWidth = 1;
+      ctx.strokeStyle = enabled ? "rgba(228,183,90,0.76)" : "rgba(143,176,164,0.18)";
+      ctx.lineWidth = 1.3;
       ctx.stroke();
+      drawButtonNotches(x, y, width, height);
 
       ctx.fillStyle = colors[2];
-      ctx.font = `${height <= 30 ? "800 11px" : "850 16px"} Inter, sans-serif`;
+      ctx.font = `${height <= 30 ? "800 11px" : "900 16px"} Georgia, serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(label, x + width / 2, y + height / 2 + 1);
@@ -1993,6 +2328,51 @@ const canvas = document.getElementById("gameCanvas");
       if (enabled) {
         GameState.buttons.push({ x, y, width, height, action, tooltip: getButtonTooltip(label) });
       }
+    }
+
+    function drawTargetPreviewBadge(cx, cy, targetData) {
+      const preview = getMovePreviewResult(targetData);
+      if (!preview) return;
+
+      const w = 58;
+      const h = 35;
+      ctx.save();
+      ctx.shadowColor = "rgba(0,0,0,0.46)";
+      ctx.shadowBlur = 10;
+      ctx.fillStyle = "rgba(8, 29, 22, 0.94)";
+      roundRect(cx - w / 2, cy - h / 2, w, h, 5);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = Theme.valid;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillStyle = Theme.ink;
+      ctx.font = "900 11px Georgia, serif";
+      ctx.fillText(`d${targetData.die}`, cx, cy - 8);
+      ctx.fillStyle = Theme.valid;
+      ctx.font = "950 12px Georgia, serif";
+      ctx.fillText(`+${formatCompactScore(preview.gained)}`, cx, cy + 7);
+      ctx.restore();
+    }
+
+    function drawButtonNotches(x, y, width, height) {
+      ctx.save();
+      ctx.strokeStyle = "rgba(246,223,170,0.22)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x + 8, y + 8);
+      ctx.lineTo(x + 18, y + 3);
+      ctx.lineTo(x + width - 18, y + 3);
+      ctx.lineTo(x + width - 8, y + 8);
+      ctx.moveTo(x + 8, y + height - 8);
+      ctx.lineTo(x + 18, y + height - 3);
+      ctx.lineTo(x + width - 18, y + height - 3);
+      ctx.lineTo(x + width - 8, y + height - 8);
+      ctx.stroke();
+      ctx.restore();
     }
 
     function spawnDiceBodies(values) {
@@ -2152,31 +2532,31 @@ const canvas = document.getElementById("gameCanvas");
         bl: { x: half, y: half }
       };
 
-      ctx.fillStyle = "#d7c8ef";
+      ctx.fillStyle = "#6b3f20";
       drawFace(side);
       ctx.fill();
-      ctx.fillStyle = "#fff4c9";
+      ctx.fillStyle = "#d4ad6a";
       drawFace(top);
       ctx.fill();
 
-      ctx.strokeStyle = "rgba(27,16,32,0.22)";
+      ctx.strokeStyle = "rgba(7,16,20,0.45)";
       ctx.lineWidth = 1;
       drawFace(side);
       ctx.stroke();
       drawFace(top);
       ctx.stroke();
 
-      if (sideValue) drawFacePips(side, size, sideValue, 0.048, "rgba(27,16,32,0.62)");
-      if (topValue) drawFacePips(top, size, topValue, 0.046, "rgba(27,16,32,0.54)");
+      if (sideValue) drawFacePips(side, size, sideValue, 0.048, "rgba(7,16,20,0.72)");
+      if (topValue) drawFacePips(top, size, topValue, 0.046, "rgba(7,16,20,0.62)");
 
       const faceGradient = ctx.createLinearGradient(-size / 2, -size / 2, size / 2, size / 2);
-      faceGradient.addColorStop(0, "#ffffff");
-      faceGradient.addColorStop(0.55, "#fff8e7");
-      faceGradient.addColorStop(1, "#f0d0ff");
+      faceGradient.addColorStop(0, "#f8e9bd");
+      faceGradient.addColorStop(0.55, "#d9a85b");
+      faceGradient.addColorStop(1, "#7f2439");
       ctx.fillStyle = faceGradient;
       roundRect(-half, -half, size, size, radius);
       ctx.fill();
-      ctx.strokeStyle = animated ? Theme.gold : Theme.line;
+      ctx.strokeStyle = animated ? Theme.valid : Theme.brass;
       ctx.lineWidth = animated ? 2.2 : 1.4;
       ctx.stroke();
 
@@ -2315,16 +2695,16 @@ const canvas = document.getElementById("gameCanvas");
       ctx.save();
       ctx.shadowColor = "rgba(0,0,0,0.42)";
       ctx.shadowBlur = 20;
-      ctx.fillStyle = "rgba(255,248,231,0.96)";
-      roundRect(x, y, boxWidth, boxHeight, 10);
+      ctx.fillStyle = "rgba(10,29,33,0.97)";
+      roundRect(x, y, boxWidth, boxHeight, 5);
       ctx.fill();
       ctx.shadowBlur = 0;
-      ctx.strokeStyle = tooltip.kind === "pip" ? Theme.purple : Theme.danger;
+      ctx.strokeStyle = tooltip.kind === "pip" ? Theme.blue : Theme.brass;
       ctx.lineWidth = 2;
       ctx.stroke();
 
-      ctx.fillStyle = Theme.darkInk;
-      ctx.font = "900 15px Inter, sans-serif";
+      ctx.fillStyle = Theme.ink;
+      ctx.font = "900 15px Georgia, serif";
       ctx.textAlign = "left";
       ctx.textBaseline = "top";
       let textY = y + padding;
@@ -2334,7 +2714,7 @@ const canvas = document.getElementById("gameCanvas");
       }
 
       textY += 6;
-      ctx.fillStyle = "#5c3a5f";
+      ctx.fillStyle = Theme.muted;
       ctx.font = "700 12px Inter, sans-serif";
       for (const line of bodyLines) {
         ctx.fillText(line, x + padding, textY);
@@ -2377,12 +2757,13 @@ const canvas = document.getElementById("gameCanvas");
 
     function getCheckerTooltip(checker, owner) {
       if (owner === "enemy") {
-        const moverText = checker.ability === "mover"
-          ? "Darker red mover: advances 2 pips at end of turn, unless blocked by two or more white checkers. If it reaches the end it re-enters next turn and breaks Mars."
-          : "Basic red checker: static hazard. A single red checker is a blot; two or more red checkers block the pip.";
+        const ability = getEnemyAbility(checker);
+        const moverText = ability === EnemyAbility.RAM
+          ? "Ram enemy: moves up to 3 times per enemy turn. Each step advances 2 pips and can attack a defended white gate, pushing one non-anchor checker to the bar."
+          : "Pawn enemy: moves up to 3 times per enemy turn. Each step advances 2 pips, or 1 pip when a defended white gate blocks the 2-pip landing.";
         return {
           kind: "checker",
-          title: checker.ability === "mover" ? "Mover Hazard Checker" : "Red Hazard Checker",
+          title: ability === EnemyAbility.RAM ? "Ram Enemy Checker" : "Pawn Enemy Checker",
           body: `${moverText} Land on one red checker to break it for +200 Chips.`
         };
       }
@@ -2421,15 +2802,23 @@ const canvas = document.getElementById("gameCanvas");
     }
 
     function getMovePreviewBreakdown(targetData) {
+      const preview = getMovePreviewResult(targetData);
+      if (!preview) return null;
+
+      return `Preview: ${preview.gained.toLocaleString()} pts (${preview.parts.join(" + ")}; x${formatNumber(preview.mult)} Mult).`;
+    }
+
+    function getMovePreviewResult(targetData) {
       const checker = getSelectedChecker();
-      if (!checker || !GameState.selected) return null;
+      if (!checker || !GameState.selected || !targetData) return null;
 
       const destination = targetData.type === "bearOff" ? null : targetData.index;
       const destinationPip = destination === null ? null : GameState.board[destination];
       const passedPips = getPassedPips(GameState.selected.source, targetData);
       const brokeEnemy = Boolean(destinationPip && destinationPip.enemyPieces.length === 1);
       const alliedCount = destinationPip ? destinationPip.playerPieces.length : 0;
-      const preview = calculateMoveScorePreview({
+
+      return calculateMoveScorePreview({
         checker,
         die: targetData.die,
         destination,
@@ -2438,8 +2827,6 @@ const canvas = document.getElementById("gameCanvas");
         alliedCount,
         passedPips
       });
-
-      return `Preview: ${preview.gained.toLocaleString()} pts (${preview.parts.join(" + ")}; x${formatNumber(preview.mult)} Mult).`;
     }
 
     function calculateMoveScorePreview({ checker, die, destination, borneOff, brokeEnemy, alliedCount, passedPips }) {
@@ -2475,6 +2862,7 @@ const canvas = document.getElementById("gameCanvas");
     function getButtonTooltip(label) {
       const copy = {
         "Rolling...": "Dice roll automatically at the start of each turn.",
+        Win: "Collect the blind payout and go directly to the shop.",
         "End Turn": "End this turn. If your score beats the target, collect the blind; otherwise the next dice roll starts automatically.",
         "Next Blind": "Advance to the next blind, keeping drafted relics.",
         Continue: "Continue from the payout screen to the shop.",
@@ -2484,7 +2872,7 @@ const canvas = document.getElementById("gameCanvas");
         Deselect: "Cancel the current checker selection.",
         "Iron Bar": "Shop relic: breaks add +2 global Mult for the rest of the round.",
         Haste: "Shop relic: using a 5 or 6 adds +20 Chips.",
-        Ssneaky: "Shop relic: roll three dice instead of two.",
+        "Sneaky Die": "Shop relic: roll three dice instead of two.",
         "Skip Shop": "Leave without taking a reward and start the next blind.",
         "Golden Top": "Shop upgrade: convert a top white checker to Golden for +50 Chips.",
         "Glass Top": "Shop upgrade: convert a top white checker to Glass for x3 Mult.",
@@ -2516,14 +2904,16 @@ const canvas = document.getElementById("gameCanvas");
 
     function addMoveAnimation(checker, path, owner) {
       const now = performance.now();
+      const duration = Math.max(260, (path.length - 1) * 170);
       GameState.hiddenCheckerIds.add(checker.id);
       GameState.moveAnimations.push({
         checker,
         owner,
         path,
         startedAt: now,
-        duration: Math.max(260, (path.length - 1) * 170)
+        duration
       });
+      return duration;
     }
 
     function updateMoveAnimations() {
@@ -2550,18 +2940,6 @@ const canvas = document.getElementById("gameCanvas");
         const y = lerp(from.y, to.y, eased) - arc;
 
         ctx.save();
-        ctx.globalAlpha = 0.35;
-        ctx.strokeStyle = Theme.accent;
-        ctx.lineWidth = 2;
-        ctx.setLineDash([5, 7]);
-        ctx.beginPath();
-        animation.path.forEach((point, index) => {
-          if (index === 0) ctx.moveTo(point.x, point.y);
-          else ctx.lineTo(point.x, point.y);
-        });
-        ctx.stroke();
-        ctx.setLineDash([]);
-        ctx.globalAlpha = 1;
         drawChecker(x, y, layout.checkerRadius + 2, animation.owner, animation.checker);
         ctx.restore();
       }
@@ -2764,81 +3142,104 @@ const canvas = document.getElementById("gameCanvas");
 
     function getCheckerPalette(owner, checker) {
       if (owner === "enemy") {
-        const mover = checker.ability === "mover";
+        const ram = getEnemyAbility(checker) === EnemyAbility.RAM;
         return {
-          light: mover ? "#ff7a92" : "#ff97a8",
-          base: mover ? "#b71943" : Theme.enemy,
-          mid: mover ? "#8e1235" : "#d72b5e",
-          dark: mover ? "#4f0922" : Theme.enemyEdge,
-          edge: mover ? "#390719" : Theme.enemyEdge,
-          rim: mover ? "#ffcf48" : "#ffe15c",
-          shadow: "#16040d"
+          light: ram ? "#e17c66" : "#df6c5e",
+          base: ram ? "#a8272d" : "#b73539",
+          mid: ram ? "#7e2025" : "#8c282c",
+          dark: ram ? "#51171b" : "#55191b",
+          edge: "#2a0c0d",
+          rim: ram ? "#c98a43" : "#a76639",
+          rimLight: "#f0b562",
+          mark: "rgba(246,223,170,0.64)",
+          shadow: "#050809"
         };
       }
 
       const palettes = {
         [CheckerType.STANDARD]: {
-          light: "#ffffff",
+          light: "#fff4cf",
           base: Theme.player,
-          mid: "#eadfd2",
-          dark: "#a99ba9",
+          mid: "#c8b183",
+          dark: "#725d3c",
           edge: Theme.playerEdge,
-          rim: "#ff2b86",
-          shadow: "#120817"
+          rim: "#d4b374",
+          rimLight: "#fff0bd",
+          mark: "rgba(76,58,38,0.54)",
+          glyph: "#5d4a31",
+          shadow: "#050809"
         },
         [CheckerType.GOLDEN]: {
-          light: "#fff9bd",
+          light: "#fff0a5",
           base: Theme.gold,
-          mid: "#dca92d",
-          dark: "#8a5d13",
-          edge: "#53380b",
-          rim: "#fff8e7",
-          shadow: "#241603"
+          mid: "#b77a2e",
+          dark: "#70431b",
+          edge: "#3e2410",
+          rim: "#d18b35",
+          rimLight: "#fff0a5",
+          mark: "rgba(62,36,16,0.52)",
+          glyph: "#6a4318",
+          shadow: "#050809"
         },
         [CheckerType.GLASS]: {
-          light: "#ffffff",
-          base: "#58ecff",
-          mid: "#27a9d9",
-          dark: "#126078",
-          edge: "#083744",
-          rim: "#fff8e7",
-          shadow: "#052934"
+          light: "#dcfffb",
+          base: "#54c9c4",
+          mid: "#218d91",
+          dark: "#0d4b52",
+          edge: "#07262c",
+          rim: "#d4b374",
+          rimLight: "#fff0bd",
+          mark: "rgba(7,38,44,0.52)",
+          glyph: "#07535a",
+          shadow: "#050809"
         },
         [CheckerType.ANCHOR]: {
-          light: "#f0edf6",
-          base: "#b8aeca",
-          mid: "#7f748f",
-          dark: "#43394e",
-          edge: "#1d1626",
-          rim: "#fff8e7",
-          shadow: "#0b0810"
+          light: "#eee3c9",
+          base: "#aaa899",
+          mid: "#74776c",
+          dark: "#3f4945",
+          edge: "#18211f",
+          rim: "#a48a5c",
+          rimLight: "#e6d5aa",
+          mark: "rgba(24,33,31,0.50)",
+          glyph: "#26312e",
+          shadow: "#050809"
         },
         [CheckerType.RUBY]: {
-          light: "#ffb1c5",
-          base: "#e21655",
-          mid: "#9e0d3b",
-          dark: "#4e061f",
-          edge: "#2c0311",
-          rim: "#ffe15c",
-          shadow: "#140208"
+          light: "#e79a9a",
+          base: "#b62f42",
+          mid: "#7f2436",
+          dark: "#461621",
+          edge: "#260b12",
+          rim: "#d4b374",
+          rimLight: "#fff0bd",
+          mark: "rgba(38,11,18,0.46)",
+          glyph: "#5b1623",
+          shadow: "#050809"
         },
         [CheckerType.PRISM]: {
-          light: "#ffffff",
-          base: "#9d73ff",
-          mid: "#6f3ddb",
-          dark: "#301b72",
-          edge: "#170c3e",
-          rim: "#35f2a4",
-          shadow: "#0e0923"
+          light: "#ead4ec",
+          base: "#9c6aa0",
+          mid: "#744a80",
+          dark: "#392541",
+          edge: "#1c1322",
+          rim: "#d4b374",
+          rimLight: "#fff0bd",
+          mark: "rgba(28,19,34,0.46)",
+          glyph: "#4a2f55",
+          shadow: "#050809"
         },
         [CheckerType.SPRINTER]: {
-          light: "#dbfff1",
-          base: Theme.accent,
-          mid: "#18b978",
-          dark: "#0a6442",
-          edge: "#053826",
-          rim: "#28d4ff",
-          shadow: "#032017"
+          light: "#e4ffd4",
+          base: "#a1c982",
+          mid: "#648d57",
+          dark: "#345536",
+          edge: "#172717",
+          rim: "#d4b374",
+          rimLight: "#fff0bd",
+          mark: "rgba(23,39,23,0.50)",
+          glyph: "#284723",
+          shadow: "#050809"
         }
       };
 
@@ -2848,28 +3249,37 @@ const canvas = document.getElementById("gameCanvas");
     function drawSwordIcon(cx, cy, radius) {
       ctx.save();
       ctx.translate(cx, cy);
-      ctx.rotate(-Math.PI / 4);
       ctx.lineCap = "round";
-      ctx.strokeStyle = "#fff8e7";
-      ctx.lineWidth = Math.max(3, radius * 0.14);
+      ctx.lineJoin = "round";
+
+      ctx.save();
+      ctx.rotate(-Math.PI / 4);
+      ctx.strokeStyle = Theme.ink;
+      ctx.lineWidth = Math.max(2.6, radius * 0.18);
       ctx.beginPath();
-      ctx.moveTo(-radius * 0.35, radius * 0.25);
-      ctx.lineTo(radius * 0.34, -radius * 0.38);
+      ctx.moveTo(-radius * 0.06, radius * 0.52);
+      ctx.lineTo(radius * 0.06, -radius * 0.46);
       ctx.stroke();
 
-      ctx.strokeStyle = "#ffe15c";
-      ctx.lineWidth = Math.max(2, radius * 0.10);
+      ctx.strokeStyle = Theme.gold;
+      ctx.lineWidth = Math.max(2.2, radius * 0.14);
       ctx.beginPath();
-      ctx.moveTo(-radius * 0.18, radius * 0.38);
-      ctx.lineTo(-radius * 0.42, radius * 0.14);
+      ctx.moveTo(-radius * 0.26, radius * 0.22);
+      ctx.lineTo(radius * 0.26, radius * 0.22);
       ctx.stroke();
 
-      ctx.fillStyle = "#fff8e7";
+      ctx.fillStyle = Theme.ink;
       ctx.beginPath();
-      ctx.moveTo(radius * 0.42, -radius * 0.45);
-      ctx.lineTo(radius * 0.25, -radius * 0.34);
-      ctx.lineTo(radius * 0.36, -radius * 0.22);
+      ctx.moveTo(0, -radius * 0.64);
+      ctx.lineTo(-radius * 0.13, -radius * 0.38);
+      ctx.lineTo(radius * 0.13, -radius * 0.38);
       ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+
+      ctx.fillStyle = Theme.gold;
+      ctx.beginPath();
+      ctx.arc(-radius * 0.27, radius * 0.32, radius * 0.12, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
     }
@@ -2954,10 +3364,10 @@ const canvas = document.getElementById("gameCanvas");
       // Toggle pill
       ctx.beginPath();
       roundRect(toggleX, toggleY, toggleW, toggleH, 8);
-      ctx.fillStyle = open ? "rgba(255,225,92,0.92)" : "rgba(22,8,23,0.78)";
+      ctx.fillStyle = open ? "rgba(228,183,90,0.92)" : "rgba(7,16,20,0.86)";
       ctx.fill();
       ctx.lineWidth = 1.5;
-      ctx.strokeStyle = open ? "#5b3c00" : "rgba(255,225,92,0.55)";
+      ctx.strokeStyle = open ? "#5b3c00" : "rgba(228,183,90,0.65)";
       ctx.stroke();
 
       ctx.fillStyle = open ? "#1b1020" : Theme.gold;
@@ -3026,10 +3436,10 @@ const canvas = document.getElementById("gameCanvas");
       ctx.save();
       ctx.beginPath();
       roundRect(panelX, panelY, panelW, panelH, 10);
-      ctx.fillStyle = "rgba(22,8,23,0.92)";
+      ctx.fillStyle = "rgba(7,16,20,0.94)";
       ctx.fill();
       ctx.lineWidth = 1.5;
-      ctx.strokeStyle = "rgba(255,225,92,0.45)";
+      ctx.strokeStyle = "rgba(228,183,90,0.50)";
       ctx.stroke();
       ctx.restore();
 
@@ -3068,13 +3478,29 @@ const canvas = document.getElementById("gameCanvas");
       const g = radius * 0.34;
       ctx.save();
       ctx.strokeStyle = palette.edge;
-      ctx.fillStyle = palette.light;
+      ctx.fillStyle = palette.glyph || palette.dark;
       ctx.lineWidth = Math.max(1.5, radius * 0.07);
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
       ctx.globalAlpha = 0.78;
 
-      if (type === CheckerType.GOLDEN) {
+      if (type === CheckerType.STANDARD) {
+        ctx.beginPath();
+        ctx.moveTo(cx, cy - g * 0.95);
+        ctx.lineTo(cx, cy + g * 0.72);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(cx, cy + g * 0.12, g * 0.54, 0, Math.PI);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(cx, cy - g * 0.95, g * 0.22, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(cx - g * 0.62, cy - g * 0.20);
+        ctx.lineTo(cx + g * 0.62, cy - g * 0.20);
+        ctx.stroke();
+
+      } else if (type === CheckerType.GOLDEN) {
         ctx.beginPath();
         for (let i = 0; i < 5; i++) {
           const outer = (i / 5) * Math.PI * 2 - Math.PI / 2;
@@ -3166,6 +3592,13 @@ const canvas = document.getElementById("gameCanvas");
       return Core.formatNumber(value);
     }
 
+    function formatCompactScore(value) {
+      if (Math.abs(value) >= 1000000) return `${(value / 1000000).toFixed(1)}m`;
+      if (Math.abs(value) >= 10000) return `${Math.round(value / 1000)}k`;
+      if (Math.abs(value) >= 1000) return `${(value / 1000).toFixed(1)}k`;
+      return String(value);
+    }
+
     function setRulesDrawer(open) {
       rulesDrawer.classList.toggle("is-open", open);
       rulesDrawer.setAttribute("aria-hidden", String(!open));
@@ -3221,10 +3654,16 @@ const canvas = document.getElementById("gameCanvas");
         GameState.score.current = amount;
         return `Score set to ${amount}.`;
       },
-      movers() {
+      enemies() {
         return GameState.board
-          .filter((pip) => pip.enemyPieces.some((checker) => checker.ability === "mover"))
-          .map((pip) => pip.index + 1);
+          .filter((pip) => pip.enemyPieces.some((checker) => getEnemyAbility(checker) === EnemyAbility.PAWN || getEnemyAbility(checker) === EnemyAbility.RAM))
+          .map((pip) => ({
+            pip: pip.index + 1,
+            enemies: pip.enemyPieces.map((checker) => getEnemyAbility(checker))
+          }));
+      },
+      movers() {
+        return this.enemies();
       }
     };
 
