@@ -137,14 +137,14 @@ const canvas = document.getElementById("gameCanvas");
       return [
         { startingIndex: 0, pip: 0, type: CheckerType.STANDARD, core: "basic", rim: "basic" },
         { startingIndex: 1, pip: 0, type: CheckerType.STANDARD, core: "basic", rim: "basic" },
-        { startingIndex: 2, pip: 3, type: CheckerType.GOLDEN, core: "gold", rim: "basic" },
+        { startingIndex: 2, pip: 3, type: CheckerType.STANDARD, core: "basic", rim: "basic" },
         { startingIndex: 3, pip: 3, type: CheckerType.STANDARD, core: "basic", rim: "basic" },
         { startingIndex: 4, pip: 3, type: CheckerType.STANDARD, core: "basic", rim: "basic" },
         { startingIndex: 5, pip: 7, type: CheckerType.STANDARD, core: "basic", rim: "basic" },
         { startingIndex: 6, pip: 7, type: CheckerType.STANDARD, core: "basic", rim: "basic" },
         { startingIndex: 7, pip: 9, type: CheckerType.STANDARD, core: "basic", rim: "basic" },
-        { startingIndex: 8, pip: 10, type: CheckerType.GLASS, core: "basic", rim: "glass" },
-        { startingIndex: 9, pip: 10, type: CheckerType.ANCHOR, core: "anchor", rim: "basic" }
+        { startingIndex: 8, pip: 10, type: CheckerType.STANDARD, core: "basic", rim: "basic" },
+        { startingIndex: 9, pip: 10, type: CheckerType.STANDARD, core: "basic", rim: "basic" }
       ];
     }
 
