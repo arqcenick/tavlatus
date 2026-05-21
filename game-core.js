@@ -27,45 +27,6 @@
     RAM: "ram"
   });
 
-  const RelicLibrary = Object.freeze({
-    SNEAKY_DIE: {
-      id: "sneaky_die",
-      name: "The Sneaky Die",
-      shortName: "Sneaky Die",
-      description: "Roll 3 dice instead of 2. All dice must be consumed."
-    },
-    IRON_BAR: {
-      id: "iron_bar",
-      name: "Iron Bar",
-      shortName: "Iron Bar",
-      description: "Breaking an enemy checker grants +2 global Mult for the round."
-    },
-    HASTE_BOOTS: {
-      id: "haste_boots",
-      name: "Haste Boots",
-      shortName: "Haste Boots",
-      description: "Using a die value of 5 or 6 grants +20 Chips."
-    },
-    LOADED_LEDGER: {
-      id: "loaded_ledger",
-      name: "Loaded Ledger",
-      shortName: "Ledger",
-      description: "Breaking a red checker pays +$1 immediately."
-    },
-    DOUBLES_DEALER: {
-      id: "doubles_dealer",
-      name: "Doubles Dealer",
-      shortName: "Dealer",
-      description: "Rolling doubles grants +1 global Mult for the round."
-    },
-    MOON_COUPON: {
-      id: "moon_coupon",
-      name: "Moon Coupon",
-      shortName: "Coupon",
-      description: "Piece upgrades in the shop cost $1 less."
-    }
-  });
-
   const TileModifierLibrary = Object.freeze({
     FORGE: {
       id: "forge",
@@ -80,6 +41,34 @@
       shortName: "Market",
       color: "#6aa58c",
       description: "Landing here doubles Chips for this move calculation."
+    },
+    IRON: {
+      id: "iron",
+      name: "Iron Gate",
+      shortName: "Iron",
+      color: "#d9b86d",
+      description: "Breaking a red checker here grants +2 global Mult for the round."
+    },
+    HASTE: {
+      id: "haste",
+      name: "Haste Line",
+      shortName: "Haste",
+      color: "#70e35f",
+      description: "Landing here with a die value of 5 or 6 adds +20 Chips."
+    },
+    LEDGER: {
+      id: "ledger",
+      name: "Ledger Pip",
+      shortName: "Ledger",
+      color: "#25b9c9",
+      description: "Breaking a red checker here pays +1 Akçe immediately."
+    },
+    DEALER: {
+      id: "dealer",
+      name: "Dealer Pip",
+      shortName: "Dealer",
+      color: "#c26db8",
+      description: "Landing here grants +1 global Mult for the round."
     }
   });
 
@@ -112,8 +101,8 @@
       bossRule: {
         id: "the_wall",
         name: "The Wall",
-        lockedPips: [11, 12],
-        description: "Pips 12 and 13 are locked. Player checkers cannot land there."
+        lockedPips: [12, 13],
+        description: "Pips 13 and 14 are locked on the enemy half. Player checkers cannot land there."
       }
     }
   ]);
@@ -178,9 +167,6 @@
     board[16].enemyPieces = [checker("enemy")];
     board[14].enemyPieces = [checker("enemy")];
     board[12].enemyPieces = [checker("enemy")];
-
-    board[5].modifier = TileModifierLibrary.FORGE;
-    board[19].modifier = TileModifierLibrary.MARKET;
 
     if (level?.bossRule) {
       for (const pipIndex of level.bossRule.lockedPips) {
@@ -293,8 +279,7 @@
     alliedCount = 0,
     passedPips = [],
     board,
-    globalMult = 1,
-    hasRelic = () => false
+    globalMult = 1
   }) {
     let chips = 10 * die;
     let mult = globalMult;
@@ -314,11 +299,12 @@
       parts.push("200 break");
       notes.push("+200 break");
 
-      if (hasRelic(RelicLibrary.IRON_BAR.id)) {
+      const destinationModifier = destination !== null ? board[destination]?.modifier : null;
+      if (destinationModifier?.id === TileModifierLibrary.IRON.id) {
         globalMultDelta += 2;
         mult += 2;
-        parts.push("+2 global Mult");
-        notes.push("+2 global Mult");
+        parts.push("+2 Iron");
+        notes.push("+2 global Mult Iron");
       }
     }
 
@@ -339,12 +325,6 @@
       mult *= checker.mult;
       parts.push(`x${formatNumber(checker.mult)} ${checker.type}`);
       notes.push(`x${formatNumber(checker.mult)} ${checker.type}`);
-    }
-
-    if (hasRelic(RelicLibrary.HASTE_BOOTS.id) && die >= 5) {
-      chips += 20;
-      parts.push("20 haste");
-      notes.push("+20 Haste");
     }
 
     if (checker.type === CheckerType.SPRINTER && die >= 5) {
@@ -376,6 +356,20 @@
         parts.push("Market doubles Chips");
         notes.push("Market doubles Chips");
       }
+      if (modifier?.id === TileModifierLibrary.HASTE.id && die >= 5) {
+        chips += 20;
+        parts.push("20 haste");
+        notes.push("+20 Haste");
+      }
+      if (modifier?.id === TileModifierLibrary.LEDGER.id && brokeEnemy) {
+        notes.push("+1 Akçe Ledger");
+      }
+      if (modifier?.id === TileModifierLibrary.DEALER.id) {
+        globalMultDelta += 1;
+        mult += 1;
+        parts.push("+1 Dealer");
+        notes.push("+1 global Mult Dealer");
+      }
     }
 
     return {
@@ -386,6 +380,9 @@
       passOver,
       globalMultDelta,
       checkerMultDelta,
+      moneyDelta: destination !== null
+        && board[destination]?.modifier?.id === TileModifierLibrary.LEDGER.id
+        && brokeEnemy ? 1 : 0,
       gained: Math.round(chips * mult)
     };
   }
@@ -408,7 +405,6 @@
     TurnPhase,
     CheckerType,
     EnemyAbility,
-    RelicLibrary,
     TileModifierLibrary,
     LevelConfig,
     createChecker,

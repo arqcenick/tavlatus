@@ -1,12 +1,12 @@
-# Pipjack Architecture
+# Tavlatus Architecture
 
-Pipjack is split into a renderer-agnostic rules core and a canvas presentation layer.
+Tavlatus is split into a renderer-agnostic rules core and a canvas presentation layer.
 
 ## `game-core.js`
 
 Owns deterministic game rules and reusable data structures:
 
-- board, pip, checker, relic, tile, and level definitions
+- board, pip, checker, deck relic-pip, tile, and level definitions
 - starting board construction
 - dice expansion, including doubles
 - valid target calculation

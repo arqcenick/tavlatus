@@ -11,7 +11,6 @@ const canvas = document.getElementById("gameCanvas");
       TurnPhase,
       CheckerType,
       EnemyAbility,
-      RelicLibrary,
       TileModifierLibrary,
       LevelConfig
     } = Core;
@@ -47,7 +46,7 @@ const canvas = document.getElementById("gameCanvas");
       boardPaddingX: 30,
       boardPaddingY: 28,
       pipGap: 6,
-      checkerRadius: 24
+      checkerRadius: 30
     };
 
     let nextCheckerId = 1;
@@ -73,9 +72,8 @@ const canvas = document.getElementById("gameCanvas");
       turnPhase: TurnPhase.ROLLING,
       selected: null,
       validTargets: [],
-      relics: [],
       runUpgrades: {
-        tileModifiers: [],
+        deckPips: {},
         checkerTypes: []
       },
       levelIndex: 0,
@@ -88,6 +86,8 @@ const canvas = document.getElementById("gameCanvas");
       buttons: [],
       shopOffers: [],
       storePurchases: 0,
+      storeHidden: false,
+      deckPlacement: null,
       roundPayout: null,
       payoutStartedAt: 0,
       enemyPendingReentry: [],
@@ -104,7 +104,9 @@ const canvas = document.getElementById("gameCanvas");
       bearOffArea: null,
       message: "Roll dice to begin.",
       runWon: false,
-      debugOpen: false
+      debugOpen: false,
+      shopParticles: [],
+      akceDisplayScale: 1.0
     };
 
     function createChecker(owner, type = CheckerType.STANDARD) {
@@ -123,14 +125,13 @@ const canvas = document.getElementById("gameCanvas");
       Core.spawnHazards(board, ramCount);
     }
 
-    function resetLevel(levelIndex, preserveRelics = true) {
+    function resetLevel(levelIndex, preserveRun = true) {
       if (autoRollTimer) {
         clearTimeout(autoRollTimer);
         autoRollTimer = null;
       }
-      const keptRelics = preserveRelics ? GameState.relics : [];
-      const keptUpgrades = preserveRelics ? GameState.runUpgrades : { tileModifiers: [], checkerTypes: [] };
-      const keptMoney = preserveRelics ? GameState.money : 0;
+      const keptUpgrades = preserveRun ? GameState.runUpgrades : { deckPips: {}, checkerTypes: [] };
+      const keptMoney = preserveRun ? GameState.money : 0;
       const level = LevelConfig[levelIndex];
 
       GameState.board = createStartingBoard(levelIndex);
@@ -154,7 +155,6 @@ const canvas = document.getElementById("gameCanvas");
       GameState.turnPhase = TurnPhase.ROLLING;
       GameState.selected = null;
       GameState.validTargets = [];
-      GameState.relics = keptRelics;
       GameState.levelIndex = levelIndex;
       GameState.floatingTexts = [];
       GameState.moveAnimations = [];
@@ -163,6 +163,8 @@ const canvas = document.getElementById("gameCanvas");
       GameState.hiddenCheckerIds = new Set();
       GameState.shopOffers = [];
       GameState.storePurchases = 0;
+      GameState.storeHidden = false;
+      GameState.deckPlacement = null;
       GameState.roundPayout = null;
       GameState.payoutStartedAt = 0;
       GameState.enemyPendingReentry = [];
@@ -170,18 +172,6 @@ const canvas = document.getElementById("gameCanvas");
       GameState.runWon = false;
       GameState.message = `${level.name}: dice are rolling.`;
       queueAutoRoll();
-    }
-
-    function hasRelic(relicId) {
-      return GameState.relics.some((relic) => relic.id === relicId);
-    }
-
-    function addRelic(relic) {
-      if (!hasRelic(relic.id)) {
-        GameState.relics.push(relic);
-        GameState.message = `${relic.name} added.`;
-        addFloatingText(canvas.clientWidth - 190, canvas.clientHeight - 104, `+ ${relic.shortName}`, Theme.accent, 1.1);
-      }
     }
 
     function enterShop() {
@@ -192,53 +182,65 @@ const canvas = document.getElementById("gameCanvas");
       GameState.rolledDice = [];
       GameState.diceBodies = [];
       GameState.storePurchases = 0;
+      GameState.storeHidden = false;
+      GameState.deckPlacement = null;
       GameState.shopOffers = generateShopOffers();
-      GameState.message = "Shop open. Buy relics or upgrade checkers, then start the next blind.";
+      GameState.shopParticles = Array.from({ length: 45 }, () => ({
+        x: Math.random(),
+        y: Math.random(),
+        size: 0.8 + Math.random() * 2.2,
+        vx: (Math.random() - 0.5) * 0.4,
+        vy: -0.2 - Math.random() * 0.5,
+        alpha: 0.15 + Math.random() * 0.45,
+        wobble: Math.random() * Math.PI * 2,
+        wobbleSpeed: 0.02 + Math.random() * 0.04
+      }));
+      GameState.message = "Shop open. Buy relic-pips, place them in your deck, or upgrade checkers before the next blind.";
     }
 
     function generateShopOffers() {
-      const relicPool = [
+      const pipPool = [
         {
-          kind: "relic",
-          title: "Iron Bar",
-          detail: "Breaks add +2 global Mult for the rest of a round.",
+          kind: "pip",
+          title: "Iron Gate",
+          detail: "Break a red checker here for +2 global Mult this round.",
           price: 5,
-          relic: RelicLibrary.IRON_BAR
+          modifier: TileModifierLibrary.IRON
         },
         {
-          kind: "relic",
-          title: "Haste Boots",
-          detail: "Using a 5 or 6 adds +20 Chips.",
+          kind: "pip",
+          title: "Haste Line",
+          detail: "Land here with die 5 or 6 for +20 Chips.",
           price: 4,
-          relic: RelicLibrary.HASTE_BOOTS
+          modifier: TileModifierLibrary.HASTE
         },
         {
-          kind: "relic",
-          title: "Sneaky Die",
-          detail: "Roll 3 dice instead of 2.",
-          price: 6,
-          relic: RelicLibrary.SNEAKY_DIE
-        },
-        {
-          kind: "relic",
-          title: "Loaded Ledger",
-          detail: "Breaking a red checker pays +1 Akçe immediately.",
+          kind: "pip",
+          title: "Ledger Pip",
+          detail: "Break a red checker here to gain +1 Akçe immediately.",
           price: 5,
-          relic: RelicLibrary.LOADED_LEDGER
+          modifier: TileModifierLibrary.LEDGER
         },
         {
-          kind: "relic",
-          title: "Doubles Dealer",
-          detail: "Rolling doubles gives +1 global Mult this round.",
+          kind: "pip",
+          title: "Dealer Pip",
+          detail: "Land here for +1 global Mult this round.",
           price: 4,
-          relic: RelicLibrary.DOUBLES_DEALER
+          modifier: TileModifierLibrary.DEALER
         },
         {
-          kind: "relic",
-          title: "Moon Coupon",
-          detail: "Piece upgrades in the shop cost 1 Akçe less.",
+          kind: "pip",
+          title: "Forge Pip",
+          detail: "Land here to give that checker +1 Mult forever.",
           price: 3,
-          relic: RelicLibrary.MOON_COUPON
+          modifier: TileModifierLibrary.FORGE
+        },
+        {
+          kind: "pip",
+          title: "Market Pip",
+          detail: "Land here to double Chips for that move.",
+          price: 4,
+          modifier: TileModifierLibrary.MARKET
         }
       ];
 
@@ -287,9 +289,9 @@ const canvas = document.getElementById("gameCanvas");
         }
       ];
 
-      const relicOffers = shuffle(relicPool.filter((offer) => !hasRelic(offer.relic.id))).slice(0, 2);
+      const pipOffers = shuffle(pipPool).slice(0, 3);
       const upgradeOffers = shuffle(upgradePool).slice(0, 3);
-      return [...relicOffers, ...upgradeOffers].map((offer, index) => ({
+      return [...pipOffers, ...upgradeOffers].map((offer, index) => ({
         ...offer,
         id: `${offer.kind}-${index}-${offer.title.toLowerCase().replace(/\s+/g, "-")}`,
         bought: false
@@ -299,6 +301,10 @@ const canvas = document.getElementById("gameCanvas");
     function chooseShopOffer(offer) {
       if (GameState.turnPhase !== TurnPhase.SHOP) return;
       if (offer.bought) return;
+      if (GameState.deckPlacement) {
+        GameState.message = "Place or cancel the current relic-pip before buying another card.";
+        return;
+      }
 
       const price = getOfferPrice(offer);
       if (GameState.money < price) {
@@ -307,21 +313,16 @@ const canvas = document.getElementById("gameCanvas");
       }
 
       GameState.money -= price;
+      GameState.akceDisplayScale = 1.6;
       offer.bought = true;
       GameState.storePurchases += 1;
-      if (offer.kind === "relic") addRelic(offer.relic);
+      if (offer.kind === "pip") startDeckPlacement(offer);
       if (offer.kind === "upgrade") addCheckerUpgrade(offer.checkerType);
-      GameState.message = `${offer.title} purchased for ${price} Akçe.`;
+      if (offer.kind !== "pip") GameState.message = `${offer.title} purchased for ${price} Akçe.`;
     }
 
     function getOfferPrice(offer) {
-      const discount = offer.kind === "upgrade" && hasRelic(RelicLibrary.MOON_COUPON.id) ? 1 : 0;
-      return Math.max(1, offer.price - discount);
-    }
-
-    function addTileUpgrade(modifier) {
-      GameState.runUpgrades.tileModifiers.push(modifier.id);
-      installTileModifier(modifier);
+      return Math.max(1, offer.price);
     }
 
     function addCheckerUpgrade(type) {
@@ -329,18 +330,63 @@ const canvas = document.getElementById("gameCanvas");
       upgradeTopPlayerChecker(type);
     }
 
-    function installTileModifier(modifier) {
-      const candidates = GameState.board.filter((pip) => !pip.locked && !pip.modifier);
-      const pip = candidates[Math.floor(Math.random() * candidates.length)];
-      if (!pip) return;
+    function startDeckPlacement(offer) {
+      GameState.deckPlacement = {
+        offerId: offer.id,
+        modifier: offer.modifier
+      };
+      GameState.storeHidden = true;
+      GameState.selected = null;
+      GameState.validTargets = [];
+      GameState.message = `${offer.title} purchased. Choose a deck pip on your side to place it, or cancel to return to the shop.`;
+    }
+
+    function cancelDeckPlacement() {
+      if (!GameState.deckPlacement) return;
+      const offer = GameState.shopOffers.find((candidate) => candidate.id === GameState.deckPlacement.offerId);
+      if (offer) offer.bought = false;
+      GameState.money += offer ? getOfferPrice(offer) : 0;
+      GameState.akceDisplayScale = 1.6;
+      GameState.storePurchases = Math.max(0, GameState.storePurchases - 1);
+      GameState.deckPlacement = null;
+      GameState.storeHidden = false;
+      GameState.message = "Relic-pip placement canceled. Purchase returned.";
+    }
+
+    function toggleStoreVisibility() {
+      if (GameState.turnPhase !== TurnPhase.SHOP || GameState.deckPlacement) return;
+      GameState.storeHidden = !GameState.storeHidden;
+      GameState.message = GameState.storeHidden
+        ? "Store hidden. Inspect your deck, then show the store when you are ready."
+        : "Store open. Buy relic-pips or piece upgrades before the next blind.";
+    }
+
+    function placeDeckPip(pipIndex) {
+      const placement = GameState.deckPlacement;
+      if (!placement) return;
+      if (!isDeckPip(pipIndex)) {
+        GameState.message = "Relic-pips can only be placed in your deck on the bottom half.";
+        return;
+      }
+
+      installTileModifier(placement.modifier, pipIndex);
+      GameState.runUpgrades.deckPips[pipIndex] = placement.modifier.id;
+      GameState.deckPlacement = null;
+      GameState.storeHidden = false;
+      GameState.message = `${placement.modifier.name} placed on deck Pip ${pipIndex + 1}.`;
+    }
+
+    function installTileModifier(modifier, pipIndex) {
+      if (!modifier || !Number.isInteger(pipIndex)) return;
+      const pip = GameState.board[pipIndex];
+      if (!pip || !isDeckPip(pipIndex) || pip.locked) return;
       pip.modifier = modifier;
-      GameState.message = `${modifier.name} installed on Pip ${pip.index + 1}.`;
     }
 
     function applyRunUpgrades() {
-      for (const modifierId of GameState.runUpgrades.tileModifiers) {
-        const modifier = modifierId === TileModifierLibrary.FORGE.id ? TileModifierLibrary.FORGE : TileModifierLibrary.MARKET;
-        installTileModifier(modifier);
+      for (const [pipIndex, modifierId] of Object.entries(GameState.runUpgrades.deckPips || {})) {
+        const modifier = getTileModifierById(modifierId);
+        if (modifier) installTileModifier(modifier, Number(pipIndex));
       }
 
       for (const checkerType of GameState.runUpgrades.checkerTypes) {
@@ -348,23 +394,26 @@ const canvas = document.getElementById("gameCanvas");
       }
     }
 
+    function getTileModifierById(modifierId) {
+      return Object.values(TileModifierLibrary).find((modifier) => modifier.id === modifierId) || null;
+    }
+
+    function isDeckPip(pipIndex) {
+      return pipIndex >= 0 && pipIndex < PIPS_PER_ROW;
+    }
+
     function rollDice() {
       if (GameState.turnPhase !== TurnPhase.ROLLING || GameState.rollsRemaining <= 0) return;
 
-      const diceCount = hasRelic(RelicLibrary.SNEAKY_DIE.id) ? 3 : 2;
+      const diceCount = 2;
       const rolledDice = Array.from({ length: diceCount }, () => Math.floor(Math.random() * 6) + 1);
       GameState.rolledDice = rolledDice;
       GameState.dice = expandRolledDice(rolledDice);
       GameState.rollsRemaining -= 1;
       GameState.turnPhase = TurnPhase.MOVING;
-      if (rolledDice[0] === rolledDice[1] && hasRelic(RelicLibrary.DOUBLES_DEALER.id)) {
-        GameState.score.mult += 1;
-        addFloatingText(layout.leftMenuWidth + 190, 96, "+1 Mult Dealer", Theme.accent, 0.9);
-      }
       spawnDiceBodies(GameState.dice);
-      const extraSneakyDie = rolledDice.length > 2 && rolledDice[0] === rolledDice[1] ? ` plus ${rolledDice.slice(2).join(", ")}` : "";
       GameState.message = rolledDice[0] === rolledDice[1]
-        ? `Rolled double ${rolledDice[0]}${extraSneakyDie}. Four matched moves unlocked.`
+        ? `Rolled double ${rolledDice[0]}. Four matched moves unlocked.`
         : `Rolled ${rolledDice.join(", ")}. Choose a checker.`;
       GameState.selected = null;
       GameState.validTargets = [];
@@ -720,8 +769,7 @@ const canvas = document.getElementById("gameCanvas");
         alliedCount,
         passedPips,
         board: GameState.board,
-        globalMult: GameState.score.mult,
-        hasRelic
+        globalMult: GameState.score.mult
       });
 
       for (const event of scoreResult.passOver.events) {
@@ -732,9 +780,9 @@ const canvas = document.getElementById("gameCanvas");
       if (scoreResult.globalMultDelta) GameState.score.mult += scoreResult.globalMultDelta;
       if (scoreResult.checkerMultDelta) checker.mult += scoreResult.checkerMultDelta;
       const { chips, mult, gained, notes } = scoreResult;
-      if (brokeEnemy && hasRelic(RelicLibrary.LOADED_LEDGER.id)) {
-        GameState.money += 1;
-        notes.push("+1 Akçe Ledger");
+      if (scoreResult.moneyDelta) {
+        GameState.money += scoreResult.moneyDelta;
+        GameState.akceDisplayScale = 1.6;
         addFloatingText(layout.leftMenuWidth - 44, 214, "+1 Akçe", Theme.gold, 0.9);
       }
 
@@ -801,6 +849,7 @@ const canvas = document.getElementById("gameCanvas");
       GameState.roundPayout = calculateRoundPayout();
       GameState.payoutStartedAt = performance.now();
       GameState.money += GameState.roundPayout.total;
+      GameState.akceDisplayScale = 1.6;
 
       if (GameState.levelIndex >= LevelConfig.length - 1) {
         GameState.runWon = true;
@@ -819,6 +868,7 @@ const canvas = document.getElementById("gameCanvas");
       GameState.roundPayout = calculateRoundPayout();
       GameState.payoutStartedAt = performance.now();
       GameState.money += GameState.roundPayout.total;
+      GameState.akceDisplayScale = 1.6;
 
       if (GameState.levelIndex >= LevelConfig.length - 1) {
         GameState.turnPhase = TurnPhase.ROUND_OVER;
@@ -920,6 +970,11 @@ const canvas = document.getElementById("gameCanvas");
     }
 
     function handlePipClick(pipIndex) {
+      if (GameState.deckPlacement) {
+        placeDeckPip(pipIndex);
+        return;
+      }
+
       if (GameState.turnPhase !== TurnPhase.MOVING) return;
 
       if (GameState.bar.player.length > 0 && !GameState.selected) {
@@ -997,7 +1052,9 @@ const canvas = document.getElementById("gameCanvas");
       drawScoreBursts();
       drawFloatingTexts();
       if (GameState.turnPhase === TurnPhase.ROUND_OVER && GameState.roundPayout) drawRoundClearOverlay(width, height);
-      if (GameState.turnPhase === TurnPhase.SHOP) drawStoreOverlay(width, height);
+      if (GameState.turnPhase === TurnPhase.SHOP && !GameState.storeHidden && !GameState.deckPlacement) drawStoreOverlay(width, height);
+      if (GameState.turnPhase === TurnPhase.SHOP) drawStoreControls(width, height);
+      if (GameState.deckPlacement) drawDeckPlacementBanner(width, height);
       drawDebugUI(width, height);
       updateHoverTooltip();
       drawTooltip(width, height);
@@ -1347,6 +1404,12 @@ const canvas = document.getElementById("gameCanvas");
       const validTarget = GameState.validTargets.find((target) => target.type === "pip" && target.index === pipIndex);
       const isValid = Boolean(validTarget);
       const isSelected = GameState.selected?.source === pipIndex;
+      const placingDeckPip = Boolean(GameState.deckPlacement);
+      const isDeckSlot = isDeckPip(pipIndex);
+      const isHoveringDeckSlot = placingDeckPip
+        && isDeckSlot
+        && GameState.hover.active
+        && pointInRect(GameState.hover.x, GameState.hover.y, { x, y, width, height });
       const tipY = direction === "down" ? y + height : y;
       const baseY = direction === "down" ? y : y + height;
 
@@ -1368,6 +1431,29 @@ const canvas = document.getElementById("gameCanvas");
       ctx.strokeStyle = isValid ? Theme.valid : "rgba(228,183,90,0.66)";
       ctx.lineWidth = isValid ? 2.4 : 1.2;
       ctx.stroke();
+
+      if (placingDeckPip) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(x, baseY);
+        ctx.lineTo(x + width, baseY);
+        ctx.lineTo(x + width / 2, tipY);
+        ctx.closePath();
+        if (!isDeckSlot) {
+          ctx.fillStyle = "rgba(7, 9, 10, 0.90)";
+          ctx.fill();
+          ctx.strokeStyle = "rgba(143,176,164,0.32)";
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+        } else {
+          ctx.fillStyle = isHoveringDeckSlot ? "rgba(112,227,95,0.16)" : "rgba(37,185,201,0.08)";
+          ctx.fill();
+          ctx.strokeStyle = isHoveringDeckSlot ? Theme.valid : "rgba(112,227,95,0.32)";
+          ctx.lineWidth = isHoveringDeckSlot ? 3 : 1.6;
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
 
       ctx.save();
       ctx.clip();
@@ -1423,11 +1509,21 @@ const canvas = document.getElementById("gameCanvas");
         drawTileModifier(pip.modifier, x + width / 2, direction === "down" ? y + 27 : y + height - 27);
       }
 
-      if (pip.intent) {
+      if (isHoveringDeckSlot && GameState.deckPlacement?.modifier) {
+        drawTileModifier(
+          GameState.deckPlacement.modifier,
+          x + width / 2,
+          direction === "down" ? y + height - 52 : y + 52,
+          1.35,
+          true
+        );
+      }
+
+      if (pip.intent && !placingDeckPip) {
         drawIntentIcon(pip.intent, x + width / 2, direction === "down" ? y - 13 : y + height + 13);
       }
 
-      drawCheckers(pip, x + width / 2, y, height, direction);
+      if (!placingDeckPip) drawCheckers(pip, x + width / 2, y, height, direction);
       drawPipNumber(pipIndex, x + width / 2, direction === "down" ? y + 14 : y + height - 14);
     }
 
@@ -1446,25 +1542,49 @@ const canvas = document.getElementById("gameCanvas");
       ctx.restore();
     }
 
-    function drawTileModifier(modifier, cx, cy) {
+    function drawTileModifier(modifier, cx, cy, scale = 1, preview = false) {
+      const skin = getModifierSkin(modifier);
+      const radius = 15 * scale;
       ctx.save();
       ctx.shadowColor = modifier.color;
-      ctx.shadowBlur = 5;
-      ctx.fillStyle = modifier.id === "forge" ? "#b77238" : "#0d8078";
+      ctx.shadowBlur = preview ? 18 : 7;
+      ctx.globalAlpha = preview ? 0.88 : 1;
+      ctx.fillStyle = skin.fill;
       ctx.beginPath();
-      ctx.arc(cx, cy, 15, 0, Math.PI * 2);
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
       ctx.fill();
       ctx.shadowBlur = 0;
+      ctx.strokeStyle = "rgba(4,10,12,0.72)";
+      ctx.lineWidth = 4 * scale;
+      ctx.stroke();
       ctx.strokeStyle = "rgba(246,223,170,0.9)";
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 2 * scale;
+      ctx.stroke();
+
+      ctx.strokeStyle = skin.line;
+      ctx.lineWidth = 1.2 * scale;
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius * 0.62, 0, Math.PI * 2);
       ctx.stroke();
 
       ctx.fillStyle = Theme.ink;
-      ctx.font = "900 12px Georgia, serif";
+      ctx.font = `900 ${Math.round(12 * scale)}px Georgia, serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(modifier.id === "forge" ? "F" : "M", cx, cy + 1);
+      ctx.fillText(skin.glyph, cx, cy + 1 * scale);
       ctx.restore();
+    }
+
+    function getModifierSkin(modifier) {
+      const skins = {
+        forge: { glyph: "F", fill: "#b77238", line: "#f5d782" },
+        market: { glyph: "M", fill: "#0d8078", line: "#8ae1dc" },
+        iron: { glyph: "I", fill: "#6f5131", line: "#d9b86d" },
+        haste: { glyph: "H", fill: "#2f7d46", line: "#b6f553" },
+        ledger: { glyph: "$", fill: "#0e5e74", line: "#25b9c9" },
+        dealer: { glyph: "+", fill: "#6d356d", line: "#dda0d5" }
+      };
+      return skins[modifier.id] || { glyph: "P", fill: modifier.color || Theme.brass, line: Theme.ink };
     }
 
     function drawIntentIcon(intent, cx, cy) {
@@ -1487,7 +1607,7 @@ const canvas = document.getElementById("gameCanvas");
     function drawCheckers(pip, cx, pipY, pipHeight, direction) {
       const enemyStack = pip.enemyPieces;
       const playerStack = pip.playerPieces;
-      const stackOffset = layout.checkerRadius * 0.55;
+      const stackOffset = layout.checkerRadius * 0.62;
 
       if (enemyStack.length > 0) {
         drawCheckerStack(enemyStack, cx + (playerStack.length ? stackOffset : 0), pipY, pipHeight, direction, "enemy");
@@ -1502,7 +1622,7 @@ const canvas = document.getElementById("gameCanvas");
       const visibleStack = stack.filter((checker) => !GameState.hiddenCheckerIds.has(checker.id));
       const visibleCount = Math.min(visibleStack.length, 5);
       const radius = layout.checkerRadius;
-      const step = radius * 1.45;
+      const step = radius * 1.34;
       const startY = direction === "down" ? pipY + radius + 12 : pipY + pipHeight - radius - 12;
 
       for (let i = 0; i < visibleCount; i++) {
@@ -1778,8 +1898,10 @@ const canvas = document.getElementById("gameCanvas");
 
       ctx.fillStyle = Theme.muted;
       ctx.font = "800 11px Inter, sans-serif";
-      ctx.fillText(`W ${GameState.bar.player.length}`, x + width / 2, innerTop + innerHeight / 2 + 8);
-      ctx.fillText(`R ${GameState.bar.enemy.length}`, x + width / 2, innerTop + innerHeight / 2 + 30);
+      if (!GameState.deckPlacement) {
+        ctx.fillText(`W ${GameState.bar.player.length}`, x + width / 2, innerTop + innerHeight / 2 + 8);
+        ctx.fillText(`R ${GameState.bar.enemy.length}`, x + width / 2, innerTop + innerHeight / 2 + 30);
+      }
     }
 
     function drawBearOff(x, innerTop, innerHeight, width = 54) {
@@ -1824,7 +1946,7 @@ const canvas = document.getElementById("gameCanvas");
       ctx.font = "900 13px Georgia, serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(`BEAR OFF ${GameState.borneOff.length}`, 0, 0);
+      ctx.fillText(GameState.deckPlacement ? "DECK VIEW" : `BEAR OFF ${GameState.borneOff.length}`, 0, 0);
       ctx.restore();
 
       if (validTarget) {
@@ -1894,9 +2016,9 @@ const canvas = document.getElementById("gameCanvas");
         cursorY,
         menuWidth - 36,
         42,
-        GameState.turnPhase === TurnPhase.MOVING ? "Deselect" : "Restart",
-        GameState.turnPhase === TurnPhase.MOVING ? clearSelection : restartRun,
-        GameState.turnPhase === TurnPhase.MOVING ? Boolean(GameState.selected) : true,
+        GameState.deckPlacement ? "Cancel Place" : GameState.turnPhase === TurnPhase.MOVING ? "Deselect" : "Restart",
+        GameState.deckPlacement ? cancelDeckPlacement : GameState.turnPhase === TurnPhase.MOVING ? clearSelection : restartRun,
+        GameState.deckPlacement ? true : GameState.turnPhase === TurnPhase.MOVING ? Boolean(GameState.selected) : true,
         "secondary"
       );
 
@@ -1943,6 +2065,7 @@ const canvas = document.getElementById("gameCanvas");
       const roundCanAdvance = GameState.turnPhase === TurnPhase.ROUND_OVER && GameState.levelIndex < LevelConfig.length - 1 && !GameState.runWon;
       if (GameState.runWon) return "New Run";
       if (GameState.turnPhase === TurnPhase.ROUND_OVER && GameState.roundPayout) return "Continue";
+      if (GameState.deckPlacement) return "Place Pip";
       if (GameState.turnPhase === TurnPhase.SHOP) return "Next Blind";
       if (GameState.turnPhase === TurnPhase.MOVING && GameState.score.current >= GameState.score.target) return "Win";
       if (GameState.turnPhase === TurnPhase.MOVING || GameState.turnPhase === TurnPhase.EVALUATING) return "End Turn";
@@ -1956,6 +2079,7 @@ const canvas = document.getElementById("gameCanvas");
       const roundCanAdvance = GameState.turnPhase === TurnPhase.ROUND_OVER && GameState.levelIndex < LevelConfig.length - 1 && !GameState.runWon;
       if (GameState.runWon) return restartRun;
       if (GameState.turnPhase === TurnPhase.ROUND_OVER && GameState.roundPayout) return continueAfterRoundClear;
+      if (GameState.deckPlacement) return () => {};
       if (GameState.turnPhase === TurnPhase.SHOP) return advanceLevel;
       if (GameState.turnPhase === TurnPhase.MOVING) return endTurn;
       if (roundCanAdvance) return advanceLevel;
@@ -1980,6 +2104,8 @@ const canvas = document.getElementById("gameCanvas");
       const roundCanAdvance = GameState.turnPhase === TurnPhase.ROUND_OVER && GameState.levelIndex < LevelConfig.length - 1 && !GameState.runWon;
       const primaryLabel = GameState.runWon
         ? "New Run"
+        : GameState.deckPlacement
+          ? "Place Pip"
         : GameState.turnPhase === TurnPhase.SHOP
           ? "Skip Shop"
         : roundCanAdvance
@@ -1989,6 +2115,8 @@ const canvas = document.getElementById("gameCanvas");
             : "Roll Dice";
       const primaryAction = GameState.runWon
         ? restartRun
+        : GameState.deckPlacement
+          ? () => {}
         : GameState.turnPhase === TurnPhase.SHOP
           ? advanceLevel
         : roundCanAdvance
@@ -1999,7 +2127,9 @@ const canvas = document.getElementById("gameCanvas");
 
       drawButton(30, y + 28, 150, 54, primaryLabel, primaryAction, canUsePrimaryButton());
 
-      if (GameState.turnPhase === TurnPhase.MOVING) {
+      if (GameState.deckPlacement) {
+        drawButton(30, y + 94, 150, 42, "Cancel Place", cancelDeckPlacement, true, "secondary");
+      } else if (GameState.turnPhase === TurnPhase.MOVING) {
         drawButton(30, y + 94, 150, 42, "Deselect", clearSelection, Boolean(GameState.selected), "secondary");
       } else {
         drawButton(30, y + 94, 150, 42, "Restart", restartRun, true, "secondary");
@@ -2016,6 +2146,7 @@ const canvas = document.getElementById("gameCanvas");
     }
 
     function canUsePrimaryButton() {
+      if (GameState.deckPlacement) return false;
       if (GameState.turnPhase === TurnPhase.ROUND_OVER || GameState.turnPhase === TurnPhase.SHOP) return true;
       return GameState.turnPhase === TurnPhase.MOVING;
     }
@@ -2224,19 +2355,19 @@ const canvas = document.getElementById("gameCanvas");
       drawAkceIcon(x + 34 + cashW + 16, y + 82, 9);
       ctx.fillStyle = Theme.muted;
       ctx.font = "750 13px Inter, sans-serif";
-      wrapText("Buy any cards you can afford. Relics are global; piece upgrades hit the top white checker.", x + 34, y + 106, panelW - 68, 16);
+      wrapText("Buy relic-pips to place on your bottom deck pips. Piece upgrades still hit the top white checker.", x + 34, y + 106, panelW - 68, 16);
 
-      const relics = GameState.shopOffers.filter((offer) => offer.kind === "relic");
+      const pips = GameState.shopOffers.filter((offer) => offer.kind === "pip");
       const upgrades = GameState.shopOffers.filter((offer) => offer.kind === "upgrade");
       const gap = 18;
-      const relicCardW = (panelW - 68 - gap) / 2;
+      const pipCardW = (panelW - 68 - gap * 2) / 3;
       const upgradeCardW = (panelW - 68 - gap * 2) / 3;
 
       ctx.fillStyle = Theme.muted;
       ctx.font = "900 13px Inter, sans-serif";
-      ctx.fillText("RELICS", x + 34, y + 150);
-      relics.forEach((offer, index) => {
-        drawShopCard(x + 34 + index * (relicCardW + gap), y + 170, relicCardW, 112, offer);
+      ctx.fillText("RELIC-PIPS", x + 34, y + 150);
+      pips.forEach((offer, index) => {
+        drawShopCard(x + 34 + index * (pipCardW + gap), y + 170, pipCardW, 112, offer);
       });
 
       ctx.fillStyle = Theme.muted;
@@ -2250,13 +2381,56 @@ const canvas = document.getElementById("gameCanvas");
       ctx.restore();
     }
 
+    function drawStoreControls(width, height) {
+      if (GameState.deckPlacement) return;
+      const controlW = 142;
+      const x = width - controlW - 156;
+      const y = 24;
+      drawButton(
+        x,
+        y,
+        controlW,
+        38,
+        GameState.storeHidden ? "Show Store" : "Hide Store",
+        toggleStoreVisibility,
+        true,
+        "secondary"
+      );
+    }
+
+    function drawDeckPlacementBanner(width, height) {
+      const placement = GameState.deckPlacement;
+      if (!placement) return;
+      const modifier = placement.modifier;
+      const x = layout.leftMenuWidth + 46;
+      const y = height - 96;
+      const w = Math.min(560, width - x - 52);
+      ctx.save();
+      ctx.fillStyle = "rgba(5,18,20,0.90)";
+      roundRect(x, y, w, 64, 4);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(112,227,95,0.62)";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      drawTileModifier(modifier, x + 38, y + 32, 1.1, true);
+      ctx.fillStyle = Theme.ink;
+      ctx.font = "900 15px Inter, sans-serif";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "middle";
+      ctx.fillText(`Place ${modifier.name}`, x + 72, y + 22);
+      ctx.fillStyle = Theme.muted;
+      ctx.font = "750 12px Inter, sans-serif";
+      wrapText(`${modifier.description} Click a bottom deck pip to replace whatever relic-pip is there.`, x + 72, y + 42, w - 92, 15);
+      ctx.restore();
+    }
+
     function drawShopCard(x, y, width, height, offer) {
       const price = getOfferPrice(offer);
       const affordable = GameState.money >= price;
       const gradient = ctx.createLinearGradient(x, y, x + width, y + height);
       gradient.addColorStop(0, offer.bought ? "#536061" : "#f2dfba");
-      gradient.addColorStop(0.55, offer.kind === "relic" ? "#d49a51" : "#80b9af");
-      gradient.addColorStop(1, offer.kind === "relic" ? "#7f2439" : "#0d6870");
+      gradient.addColorStop(0.55, offer.kind === "pip" ? "#d49a51" : "#80b9af");
+      gradient.addColorStop(1, offer.kind === "pip" ? "#7f2439" : "#0d6870");
       ctx.fillStyle = gradient;
       roundRect(x, y, width, height, 4);
       ctx.fill();
@@ -2283,6 +2457,10 @@ const canvas = document.getElementById("gameCanvas");
       ctx.font = `${width < 260 ? "700 10px" : "700 11px"} Inter, sans-serif`;
       wrapText(offer.detail, x + 12, y + 43, width - 24, 14);
 
+      if (offer.kind === "pip" && offer.modifier) {
+        drawTileModifier(offer.modifier, x + width - 28, y + height - 24, 0.82);
+      }
+
       if (!offer.bought) {
         GameState.buttons.push({
           x,
@@ -2293,7 +2471,7 @@ const canvas = document.getElementById("gameCanvas");
           tooltip: {
             kind: "shop",
             title: `${offer.title} - ${price} Akçe`,
-            body: `${offer.detail} ${affordable ? "Click to buy." : "Not enough Akçe yet."}`
+            body: `${offer.detail} ${affordable ? (offer.kind === "pip" ? "Click to buy, then place it in your deck." : "Click to buy.") : "Not enough Akçe yet."}`
           }
         });
       }
@@ -2637,7 +2815,9 @@ const canvas = document.getElementById("gameCanvas");
       }
 
       const { x, y } = GameState.hover;
-      const checkerHit = [...GameState.checkerHitAreas].reverse().find((area) => pointInRect(x, y, area));
+      const checkerHit = GameState.deckPlacement
+        ? null
+        : [...GameState.checkerHitAreas].reverse().find((area) => pointInRect(x, y, area));
       if (checkerHit) {
         GameState.hover.tooltip = checkerHit.tooltip;
         canvas.style.cursor = "help";
@@ -2647,7 +2827,16 @@ const canvas = document.getElementById("gameCanvas");
       const pipHit = GameState.pipHitAreas.find((area) => pointInRect(x, y, area));
       if (pipHit) {
         GameState.hover.tooltip = pipHit.tooltip;
-        canvas.style.cursor = GameState.turnPhase === TurnPhase.MOVING ? "pointer" : "help";
+        if (GameState.deckPlacement) {
+          const modifier = GameState.deckPlacement.modifier;
+          const existing = GameState.board[pipHit.pipIndex]?.modifier;
+          GameState.message = isDeckPip(pipHit.pipIndex)
+            ? `${modifier.name}: ${modifier.description} Click to ${existing ? `replace ${existing.name}` : "place it"} on deck Pip ${pipHit.pipIndex + 1}.`
+            : "Enemy-side pips are greyed out. Relic-pips can only be placed in your bottom deck.";
+        }
+        canvas.style.cursor = GameState.deckPlacement
+          ? isDeckPip(pipHit.pipIndex) ? "copy" : "not-allowed"
+          : GameState.turnPhase === TurnPhase.MOVING ? "pointer" : "help";
         return;
       }
 
@@ -2730,10 +2919,18 @@ const canvas = document.getElementById("gameCanvas");
         `${pip.playerPieces.length} white checker${pip.playerPieces.length === 1 ? "" : "s"}, ${pip.enemyPieces.length} red checker${pip.enemyPieces.length === 1 ? "" : "s"}.`
       ];
 
+      if (GameState.deckPlacement) {
+        const modifier = GameState.deckPlacement.modifier;
+        if (isDeckPip(pipIndex)) {
+          const replaceText = pip.modifier ? ` This will replace ${pip.modifier.name}.` : "";
+          parts.push(`Deck slot. Click to place ${modifier.name}: ${modifier.description}${replaceText}`);
+        } else {
+          parts.push("Enemy half. Boss and enemy effects may use this side, but your relic-pips cannot be placed here.");
+        }
+      }
+
       if (pip.modifier) {
-        const passText = pip.modifier.id === TileModifierLibrary.FORGE.id
-          ? "Passing over it adds +5 Chips."
-          : "Passing over it adds x0.25 Mult.";
+        const passText = getModifierPassText(pip.modifier);
         parts.push(`${pip.modifier.name}: ${pip.modifier.description} ${passText}`);
       }
       if (pip.intent) parts.push(`${pip.intent.name}: special hazard tile.`);
@@ -2753,6 +2950,12 @@ const canvas = document.getElementById("gameCanvas");
         title: `Pip ${pipIndex + 1}`,
         body: parts.join(" ")
       };
+    }
+
+    function getModifierPassText(modifier) {
+      if (modifier.id === TileModifierLibrary.FORGE.id) return "Passing over it adds +5 Chips.";
+      if (modifier.id === TileModifierLibrary.MARKET.id) return "Passing over it adds x0.25 Mult.";
+      return "Pass-over has no extra effect.";
     }
 
     function getCheckerTooltip(checker, owner) {
@@ -2839,8 +3042,7 @@ const canvas = document.getElementById("gameCanvas");
         alliedCount,
         passedPips,
         board: GameState.board,
-        globalMult: GameState.score.mult,
-        hasRelic
+        globalMult: GameState.score.mult
       });
     }
 
@@ -2864,15 +3066,16 @@ const canvas = document.getElementById("gameCanvas");
         "Rolling...": "Dice roll automatically at the start of each turn.",
         Win: "Collect the blind payout and go directly to the shop.",
         "End Turn": "End this turn. If your score beats the target, collect the blind; otherwise the next dice roll starts automatically.",
-        "Next Blind": "Advance to the next blind, keeping drafted relics.",
+        "Next Blind": "Advance to the next blind, keeping your deck pips and drafted checker upgrades.",
+        "Place Pip": "Choose a bottom deck pip to place the purchased relic-pip.",
+        "Cancel Place": "Cancel this relic-pip purchase and return to the shop.",
+        "Hide Store": "Hide the store overlay so you can inspect the board.",
+        "Show Store": "Bring the store overlay back.",
         Continue: "Continue from the payout screen to the shop.",
         "New Run": "Start a fresh run from Small Blind.",
         "Restart Run": "Restart the run from Small Blind.",
         Restart: "Restart the run from Small Blind.",
         Deselect: "Cancel the current checker selection.",
-        "Iron Bar": "Shop relic: breaks add +2 global Mult for the rest of the round.",
-        Haste: "Shop relic: using a 5 or 6 adds +20 Chips.",
-        "Sneaky Die": "Shop relic: roll three dice instead of two.",
         "Skip Shop": "Leave without taking a reward and start the next blind.",
         "Golden Top": "Shop upgrade: convert a top white checker to Golden for +50 Chips.",
         "Glass Top": "Shop upgrade: convert a top white checker to Glass for x3 Mult.",
