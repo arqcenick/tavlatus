@@ -77,7 +77,7 @@
         </div>
         <div>
           <dt>Enemies</dt>
-          <dd>Every enemy phase, the two enemy pieces farthest from the player base move one by one. Pawns move 2 pips, or 1 pip when blocked by a defended white gate. Rams can attack a defended gate and push one white checker to the bar.</dd>
+          <dd>Every enemy phase, the two rearmost enemy pieces AND the two nearest your base each advance by 3 pips (four moves total). Pawns take the largest legal step (up to 3) and are shortened when a defended white gate blocks them. Rams can breach a defended gate and push one white checker to the bar.</dd>
         </div>
         <div>
           <dt>Tiles</dt>
@@ -256,8 +256,8 @@
               </div>
             </div>
             <div class="wiki-info">
-              <h3>Pawn <span class="stat-badge enemy">2 Pips</span></h3>
-              <p>Standard enemy checker. Moves 2 pips during enemy movement phases. Reduced to moving only 1 pip when attempting to pass a defended player gate (2+ checkers).</p>
+              <h3>Pawn <span class="stat-badge enemy">3 Pips</span></h3>
+              <p>Standard enemy checker. Advances up to 3 pips each phase (the move-token value), taking the largest legal distance and shortening its step when a defended player gate (2+ checkers) blocks the way.</p>
             </div>
           </div>
           <div class="wiki-card">
@@ -267,8 +267,8 @@
               </div>
             </div>
             <div class="wiki-info">
-              <h3>Ram <span class="stat-badge enemy">2x3 Pips</span></h3>
-              <p>Battering Ram enemy. Moves up to 3 times per phase (each step advances 2 pips). Can attack defended player gates, dislodging one player checker and sending it to the Bar.</p>
+              <h3>Ram <span class="stat-badge enemy">3 Pips</span></h3>
+              <p>Battering Ram enemy. Advances up to 3 pips each phase and can breach a defended player gate when closing at exactly 2 pips, dislodging one player checker to the Bar (or shattering it on a Glass Rim).</p>
             </div>
           </div>
           <div class="wiki-card">

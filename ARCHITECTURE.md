@@ -14,7 +14,7 @@ Tavlatus is a rogue-like backgammon hybrid split into a renderer-agnostic rules 
 - **Attack (Internal: Bear Off)**: The zone where player checkers score and exit the board. Also displays procedural boss panels and active enemy statistics.
 - **Allied Bar**: Re-entry area for captured player checkers.
 - **Attacked Enemies (Enemy Bar)**: Hold area for captured enemy checkers before they enter play at the start of their turn.
-- **Enemy Move Tokens**: Pentagonal intent tokens showing values for upcoming enemy moves. These tokens move the farthest enemy checker (highest index) towards the player base (index 0).
+- **Enemy Move Tokens**: Pentagonal intent tokens showing values for upcoming enemy moves. Each enemy phase, the move budget is split in two: half the tokens advance the **rearmost** enemy checkers (highest index, farthest from the player base) and half advance the **vanguard** (lowest index, closest to the player base). With the default `[3, 3, 3, 3]` tokens this is two rear + two vanguard. One mover is chosen per occupied pip (Rams prioritized over Pawns within a pip), picked from the highest-index pip first, and each advances by its token's value.
 
 ---
 

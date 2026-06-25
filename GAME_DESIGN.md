@@ -70,7 +70,7 @@ graph TD
 
 ### Checker Rims (Multipliers)
 - **Basic Rim**: Applies a $1\times$ multiplier.
-- **Glass Rim**: Applies a $2\times$ multiplier. However, it is fragile; if another checker lands on it, or if a checker passes over it, the Glass Rim shatters, destroying the checker.
+- **Glass Rim**: Applies a $2\times$ multiplier. However, it is fragile; it shatters (destroying the checker) when an *enemy* checker lands on it, when a Ram dislodges it, or when an enemy passes over it during its advance. A Glass-Rim checker reinforced by an **Anchor Core** is spared from shattering. Player checkers landing on or passing over a Glass-Rim checker do **not** shatter it.
 - **Ruby Rim**: Applies a $3\times$ multiplier.
 - **Prism Rim**: Applies a premium $5\times$ multiplier.
 
@@ -82,12 +82,12 @@ The board consists of 24 pips. The bottom 12 pips represent the player's **Deck*
 
 | Relic-Pip | Symbol | In-Transit (Pass-Over) Effect | Landing Effect |
 | :--- | :---: | :--- | :--- |
-| **The Forge** | **F** | Adds $+5 \text{ Chips}$ to the move. | Permanently grants the landing checker $+1 \text{ Mult}$ for the rest of the run. |
+| **The Forge** | **F** | Adds $+5 \text{ Chips}$ to the move. | Upgrades the landing checker's rim tier (Basic $\to$ Glass $\to$ Ruby $\to$ Prism) for the rest of the level. |
 | **The Market** | **M** | Adds $+0.25\times \text{ Mult}$ to the move. | Doubles the final Chip value of that move. |
-| **Iron Gate** | **I** | None | Establishes a protective block. Enemy checkers cannot pass this pip if at least one allied checker stands here. |
-| **Haste Line** | **H** | Grants $+1$ extra movement pip. | Draws $1$ extra die for the player's next roll. |
-| **Ledger Pip** | **$** | None | Grants $+1 \text{ Akçe}$ (money) if a checker lands here. |
-| **Dealer Pip** | **+** | None | Adds $+1$ temporary die roll to the player's remaining pool. |
+| **Iron Gate** | **I** | None | Breaking a red enemy checker on this pip grants $+2$ global Mult for the rest of the round. |
+| **Haste Line** | **H** | None | Landing here with a die value of $5$ or $6$ adds $+20 \text{ Chips}$ to the move. |
+| **Ledger Pip** | **$** | None | Breaking a red enemy checker on this pip immediately awards $+1 \text{ Akçe}$. |
+| **Dealer Pip** | **+** | None | Landing here grants $+1$ global Mult for the rest of the round. |
 
 ---
 
@@ -96,14 +96,14 @@ The board consists of 24 pips. The bottom 12 pips represent the player's **Deck*
 The enemy does not take random actions. Instead, they act as deterministic obstacles on the board:
 
 ### Enemy Checkers
-- **Pawns**: Standard red checkers. They move 2 pips at a time. If they hit a single player checker, they capture it and send it to the Allied Bar. If the player has two or more checkers on a pip (forming a "Gate"), Pawns cannot pass it unless it is undefended. If blocked by a defended allied gate, Pawns can only advance 1 pip.
-- **Rams**: Elite heavy units. Rams advance 2 pips and can actively attack a defended allied gate, breaking the gate and sending one of the player's non-Anchor checkers to the Allied Bar.
+- **Pawns**: Standard red checkers. They advance up to the current Move Token's value (currently 3 pips), always taking the largest legal distance. If they land on a pip holding a single player checker, they capture it and send it to the Allied Bar. If the player has two or more checkers on a pip (forming a "Gate"), Pawns cannot pass it; they instead resolve to the largest shorter distance still open (which may be 1 pip, or none if totally blocked).
+- **Rams**: Elite heavy units. Rams advance up to the Move Token's value and can actively breach a defended allied gate when closing at exactly 2 pips, dislodging one of the player's non-Anchor checkers to the Allied Bar (or shattering it on the spot if it has a Glass Rim).
 
 ### Enemy Phase & Move Tokens
-- At the start of the level, the enemy's upcoming movements are displayed as a row of blue **Move Tokens** (e.g. `[3, 3]`).
+- At the start of the level, the enemy's upcoming movements are displayed as a row of blue **Move Tokens** (e.g. `[3, 3, 3, 3]`).
 - During the enemy phase, the enemy consumes these tokens one-by-one.
-- For each token consumed, the **farthest enemy checker** (the one highest on the board index/closest to the player's starting area) advances towards the player's base by the token's value.
-- If an enemy checker reaches the player's base (pip 0), it escapes, raising the blind's difficulty.
+- The move budget is split evenly each phase: **half the tokens advance the rearmost enemy checkers** (highest index, farthest from the player's base) and **half advance the vanguard** (lowest index, closest to the player's base). With four tokens this means two rear + two vanguard. One mover is chosen per occupied pip (Rams prioritized over Pawns within a pip), and each advances by its token's value.
+- If an enemy checker moves off past the player's base (past pip 0), it escapes/attacks and is queued to re-enter on a later enemy turn. Any escape also voids the round's **Mars** payout bonus.
 
 ### Re-entry & The Bars
 - **Allied Bar**: Captured player checkers are sent here and must re-enter the board at the starting area (pips 0-5) using dice before any other checker can move.
@@ -113,7 +113,7 @@ The enemy does not take random actions. Instead, they act as deterministic obsta
 
 ## 7. Economy & The Shop
 
-Clearing a blind allows players to visit the Shop, using their accumulated **Akçe** (earned by clearing rounds and landing on Ledger Pips) to upgrade their engine.
+Clearing a blind allows players to visit the Shop, using their accumulated **Akçe** (earned by clearing rounds, banking unused rolls as interest, and breaking enemies on Ledger Pips) to upgrade their engine.
 
 ### Akçe Payout Mechanics
 - **Blind Payout**: Clearing a standard blind pays $3 \text{ Akçe}$. Clearing a Boss Blind pays $5 \text{ Akçe}$.
@@ -123,7 +123,7 @@ Clearing a blind allows players to visit the Shop, using their accumulated **Ak�
 ### Shop Draft Categories
 The shop drafts 9 items divided into three rows:
 1. **Relic-Pips**: Modifiers (Forge, Market, etc.) to place onto the bottom 12 deck slots. Buying a relic-pip lets the player inspect the board, hide the shop, and click a deck slot to place it (replacing any existing modifier).
-2. **Checker Drafts**: Specialized pre-configured checkers (e.g. Golden, Glass, Anchor, Ruby, Prism) that can replace one of the player's 10 starting checkers.
+2. **Checker Drafts**: Specialized pre-configured checkers (Golden, Glass, Anchor, Ruby, Prism, and the in-progress **Sprinter**) that can replace one of the player's 10 starting checkers. Note: the **Sprinter** is a work-in-progress draft with no special ability implemented yet — it currently behaves as a standard (basic/basic) checker.
 3. **Core & Rim Upgrades**: Permanent upgrades that can be applied directly to a selected starting checker on the board (e.g. upgrading a checker's core to Gold, or its rim to Prism).
 
 ---

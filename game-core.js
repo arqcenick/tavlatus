@@ -80,7 +80,7 @@
       rolls: 8,
       enemyMoves: 2,
       enemyRams: 1,
-      enemyTokens: [3, 3],
+      enemyTokens: [3, 3, 3, 3],
       bossRule: null
     },
     {
@@ -90,7 +90,7 @@
       rolls: 8,
       enemyMoves: 2,
       enemyRams: 2,
-      enemyTokens: [3, 3],
+      enemyTokens: [3, 3, 3, 3],
       bossRule: null
     },
     {
@@ -100,7 +100,7 @@
       rolls: 9,
       enemyMoves: 2,
       enemyRams: 3,
-      enemyTokens: [3, 3],
+      enemyTokens: [3, 3, 3, 3],
       bossRule: {
         id: "the_wall",
         name: "The Wall",

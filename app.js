@@ -749,7 +749,7 @@ const canvas = document.getElementById("gameCanvas");
       GameState.enemyMovesConsumed = 0;
 
       const level = LevelConfig[GameState.levelIndex];
-      const tokens = level.enemyTokens || [3, 3];
+      const tokens = level.enemyTokens || [3, 3, 3, 3];
 
       const resolveNextMove = () => {
         if (moveIndex >= moves.length || GameState.turnPhase === TurnPhase.ROUND_OVER) {
@@ -785,17 +785,25 @@ const canvas = document.getElementById("gameCanvas");
     }
 
     function getEnemyMovesForTurn() {
-      const moveCount = getEnemyMoveCount();
-      const moves = [];
+      const candidates = [];
 
       for (const pip of GameState.board) {
         const mover = chooseEnemyMover(pip.enemyPieces);
-        if (mover) moves.push({ source: pip.index, checkerId: mover.id });
+        if (mover) candidates.push({ source: pip.index, checkerId: mover.id });
       }
 
-      return moves
-        .sort((a, b) => b.source - a.source)
-        .slice(0, moveCount);
+      const byFarthest = [...candidates].sort((a, b) => b.source - a.source);
+      const total = Math.min(getEnemyMoveCount(), byFarthest.length);
+      const frontCount = Math.floor(total / 2);
+      const backCount = total - frontCount;
+
+      const backMoves = byFarthest.slice(0, backCount);
+      const usedSources = new Set(backMoves.map((move) => move.source));
+      const frontMoves = byFarthest
+        .filter((move) => !usedSources.has(move.source))
+        .slice(-frontCount);
+
+      return [...backMoves, ...frontMoves];
     }
 
     function getEnemyMoveCount() {
@@ -2341,7 +2349,7 @@ function drawBackground(width, height) {
 
     function getEnemyPreviewDestination(source, checker, moveIndex) {
       const level = LevelConfig[GameState.levelIndex];
-      const tokens = level.enemyTokens || [3, 3];
+      const tokens = level.enemyTokens || [3, 3, 3, 3];
       const tokenValue = tokens[moveIndex] || 3;
 
       const result = getEnemyPreviewStep(checker, source, tokenValue);
@@ -2919,19 +2927,34 @@ function drawBackground(width, height) {
       ctx.stroke();
       cursorY += 12;
 
-      const tokens = level.enemyTokens || [3, 3];
+      const tokens = level.enemyTokens || [3, 3, 3, 3];
       const tokensCount = tokens.length;
+      const rearCount = Math.floor(tokensCount / 2);
       const tokenSize = 34;
-      const tokenGap = 16;
+      const tokenGap = 12;
       const totalWidth = tokensCount * tokenSize + (tokensCount - 1) * tokenGap;
       const startTokenX = x + (menuWidth - totalWidth) / 2;
+
+      ctx.fillStyle = Theme.muted;
+      ctx.font = "700 9px Inter, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(`${rearCount} rearmost + ${tokensCount - rearCount} vanguard / phase`, x + menuWidth / 2, cursorY + 4);
+      cursorY += 12;
 
       for (let i = 0; i < tokensCount; i++) {
         const tokenX = startTokenX + i * (tokenSize + tokenGap) + tokenSize / 2;
         const tokenY = cursorY + tokenSize / 2;
         const value = tokens[i];
         const isConsumed = i < GameState.enemyMovesConsumed;
-        drawPentagonToken(tokenX, tokenY, tokenSize / 2, value, isConsumed);
+        const isRear = i < rearCount;
+        drawPentagonToken(tokenX, tokenY, tokenSize / 2, value, isConsumed, isRear);
+
+        ctx.fillStyle = isConsumed ? "rgba(143,176,164,0.5)" : isRear ? Theme.blue : Theme.danger;
+        ctx.font = "800 8px Inter, sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(isRear ? "REAR" : "FRONT", tokenX, tokenY + tokenSize / 2 + 7);
 
         GameState.buttons.push({
           x: tokenX - tokenSize / 2,
@@ -2941,12 +2964,14 @@ function drawBackground(width, height) {
           action: null,
           tooltip: {
             kind: "enemyToken",
-            title: `Enemy Move Token (${value})`,
-            body: `During the enemy phase, this token makes their farthest checker move towards your base by its number (${value} pips).`
+            title: `${isRear ? "Rear" : "Vanguard"} Move Token (${value})`,
+            body: isRear
+              ? `Each phase the enemy pushes its two rearmost checkers and its two closest to your base toward you by their token value. This REAR token advances one of the far-back enemies by ${value} pips.`
+              : `Each phase the enemy pushes its two rearmost checkers and its two closest to your base toward you by their token value. This VANGUARD token advances one of the front-line enemies (nearest your base) by ${value} pips.`
           }
         });
       }
-      cursorY += tokenSize + 16;
+      cursorY += tokenSize + 26;
 
       // Killed/Captured Enemies
       ctx.fillStyle = Theme.ink;
@@ -3071,7 +3096,7 @@ function drawBackground(width, height) {
       }
     }
 
-    function drawPentagonToken(cx, cy, r, value, isConsumed) {
+    function drawPentagonToken(cx, cy, r, value, isConsumed, isRear = true) {
       ctx.save();
       ctx.beginPath();
       for (let i = 0; i < 5; i++) {
@@ -3086,9 +3111,12 @@ function drawBackground(width, height) {
       if (isConsumed) {
         ctx.fillStyle = "rgba(40, 50, 55, 0.8)";
         ctx.strokeStyle = "rgba(100, 110, 115, 0.4)";
+      } else if (isRear) {
+        ctx.fillStyle = "rgba(37, 185, 201, 0.85)";
+        ctx.strokeStyle = "rgba(228, 183, 90, 0.8)";
       } else {
-        ctx.fillStyle = "rgba(37, 185, 201, 0.85)"; // neon blue
-        ctx.strokeStyle = "rgba(228, 183, 90, 0.8)"; // gold border
+        ctx.fillStyle = "rgba(184, 49, 53, 0.9)";
+        ctx.strokeStyle = "rgba(228, 183, 90, 0.8)";
       }
       ctx.lineWidth = 1.5;
       ctx.fill();
