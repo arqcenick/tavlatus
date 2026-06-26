@@ -104,8 +104,61 @@
       bossRule: {
         id: "the_wall",
         name: "The Wall",
+        payout: 5,
         lockedPips: [12, 13],
         description: "Pips 13 and 14 are locked on the enemy half. Player checkers cannot land there."
+      }
+    },
+    {
+      level: 4,
+      name: "Boss Blind",
+      target: 4000,
+      rolls: 9,
+      enemyMoves: 2,
+      enemyRams: 3,
+      enemyTokens: [3, 3, 3, 3],
+      bossRule: {
+        id: "the_prime",
+        name: "The Prime",
+        payout: 6,
+        prime: { start: 12, length: 6, shift: 1 },
+        description: "A 6-pip prime locks the enemy half and creeps +1 pip toward your deck each enemy phase."
+      }
+    },
+    {
+      level: 5,
+      name: "Boss Blind",
+      target: 5800,
+      rolls: 10,
+      enemyMoves: 2,
+      enemyRams: 4,
+      enemyTokens: [3, 3, 3, 3, 3, 3],
+      bossRule: {
+        id: "the_backgame",
+        name: "The Backgame",
+        payout: 7,
+        allRams: true,
+        instantReentry: true,
+        extraEnemies: [[15, 1], [17, 1]],
+        description: "Every enemy is a Ram. Captured enemies re-enter the same turn. Deep anchors everywhere."
+      }
+    },
+    {
+      level: 6,
+      name: "Boss Blind",
+      target: 6500,
+      rolls: 10,
+      enemyMoves: 2,
+      enemyRams: 4,
+      enemyTokens: [3, 3, 3, 3, 3, 3],
+      bossRule: {
+        id: "the_cube",
+        name: "The Cube",
+        payout: 8,
+        targetEscalation: 150,
+        multDecay: 0.5,
+        suppressRelic: true,
+        description: "The doubling cube raises the target and taxes your Mult each enemy phase. Your strongest relic-pip is suppressed."
       }
     }
   ]);
@@ -221,20 +274,45 @@
     board[12].enemyPieces = [checker("enemy")];
 
     if (level?.bossRule) {
-      for (const pipIndex of level.bossRule.lockedPips) {
-        board[pipIndex].locked = true;
+      const rule = level.bossRule;
+      if (rule.lockedPips) {
+        for (const pipIndex of rule.lockedPips) {
+          if (board[pipIndex]) board[pipIndex].locked = true;
+        }
+      }
+      if (rule.prime) {
+        for (let i = 0; i < rule.prime.length; i++) {
+          const idx = rule.prime.start + i;
+          if (board[idx]) board[idx].locked = true;
+        }
+      }
+      if (rule.extraEnemies) {
+        for (const [pipIndex, count] of rule.extraEnemies) {
+          if (board[pipIndex]) {
+            for (let i = 0; i < count; i++) board[pipIndex].enemyPieces.push(checker("enemy"));
+          }
+        }
       }
     }
 
-    spawnHazards(board, level?.enemyRams || 0);
+    spawnHazards(board, level?.enemyRams || 0, level?.bossRule);
     return board;
   }
 
-  function spawnHazards(board, ramCount) {
+  function spawnHazards(board, ramCount, bossRule) {
     for (const pip of board) {
       for (const checker of pip.enemyPieces) {
         checker.ability = EnemyAbility.PAWN;
       }
+    }
+
+    if (bossRule && bossRule.allRams) {
+      for (const pip of board) {
+        for (const checker of pip.enemyPieces) {
+          checker.ability = EnemyAbility.RAM;
+        }
+      }
+      return;
     }
 
     const candidates = [12, 14, 16, 18, 20, 23].filter((pipIndex) => board[pipIndex].enemyPieces.length > 0);
@@ -309,6 +387,7 @@
 
     for (const pipIndex of passedPips) {
       const modifier = board[pipIndex]?.modifier;
+      if (modifier?._suppressed) continue;
       if (modifier?.id === TileModifierLibrary.FORGE.id) {
         chips += 5;
         events.push({ pipIndex, type: "chips", amount: 5, label: "+5 pass" });
@@ -337,6 +416,8 @@
     let mult = globalMult;
     let globalMultDelta = 0;
     let checkerMultDelta = 0;
+    const destMod = destination !== null ? board[destination]?.modifier : null;
+    const activeDestMod = destMod && !destMod._suppressed ? destMod : null;
     const parts = [`${10 * die} move`];
     const notes = [`+${chips} move (${die} x 10)`];
 
@@ -351,8 +432,7 @@
       parts.push("200 break");
       notes.push("+200 break");
 
-      const destinationModifier = destination !== null ? board[destination]?.modifier : null;
-      if (destinationModifier?.id === TileModifierLibrary.IRON.id) {
+      if (activeDestMod?.id === TileModifierLibrary.IRON.id) {
         globalMultDelta += 2;
         mult += 2;
         parts.push("+2 Iron");
@@ -404,25 +484,24 @@
     }
 
     if (destination !== null) {
-      const modifier = board[destination]?.modifier;
-      if (modifier?.id === TileModifierLibrary.FORGE.id) {
+      if (activeDestMod?.id === TileModifierLibrary.FORGE.id) {
         const nextRim = getNextRimTier(checker.rim);
         notes.push(`Forge: upgrade rim to ${nextRim}`);
       }
-      if (modifier?.id === TileModifierLibrary.MARKET.id) {
+      if (activeDestMod?.id === TileModifierLibrary.MARKET.id) {
         chips *= 2;
         parts.push("Market doubles Chips");
         notes.push("Market doubles Chips");
       }
-      if (modifier?.id === TileModifierLibrary.HASTE.id && die >= 5) {
+      if (activeDestMod?.id === TileModifierLibrary.HASTE.id && die >= 5) {
         chips += 20;
         parts.push("20 haste");
         notes.push("+20 Haste");
       }
-      if (modifier?.id === TileModifierLibrary.LEDGER.id && brokeEnemy) {
+      if (activeDestMod?.id === TileModifierLibrary.LEDGER.id && brokeEnemy) {
         notes.push("+1 Akçe Ledger");
       }
-      if (modifier?.id === TileModifierLibrary.DEALER.id) {
+      if (activeDestMod?.id === TileModifierLibrary.DEALER.id) {
         globalMultDelta += 1;
         mult += 1;
         parts.push("+1 Dealer");
@@ -438,10 +517,8 @@
       passOver,
       globalMultDelta,
       checkerMultDelta,
-      checkerRimUpgrade: destination !== null && board[destination]?.modifier?.id === TileModifierLibrary.FORGE.id ? getNextRimTier(checker.rim) : null,
-      moneyDelta: destination !== null
-        && board[destination]?.modifier?.id === TileModifierLibrary.LEDGER.id
-        && brokeEnemy ? 1 : 0,
+      checkerRimUpgrade: activeDestMod?.id === TileModifierLibrary.FORGE.id ? getNextRimTier(checker.rim) : null,
+      moneyDelta: activeDestMod?.id === TileModifierLibrary.LEDGER.id && brokeEnemy ? 1 : 0,
       gained: Math.round(chips * mult)
     };
   }
@@ -491,6 +568,97 @@
     return Number.isInteger(value) ? String(value) : value.toFixed(1);
   }
 
+  function shuffleArray(arr) {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  const ShopRarityWeights = Object.freeze({ common: 60, rare: 30, legendary: 10 });
+
+  const ShopCatalog = Object.freeze([
+    { kind: "pip", title: "Forge Pip", detail: "Land here to temporarily upgrade this checker's rim tier.", price: 3, rarity: "common", modifier: TileModifierLibrary.FORGE },
+    { kind: "pip", title: "Dealer Pip", detail: "Land here for +1 global Mult this round.", price: 4, rarity: "common", modifier: TileModifierLibrary.DEALER },
+    { kind: "pip", title: "Haste Line", detail: "Land here with die 5 or 6 for +20 Chips.", price: 4, rarity: "common", modifier: TileModifierLibrary.HASTE },
+    { kind: "pip", title: "Market Pip", detail: "Land here to double Chips for that move.", price: 4, rarity: "common", modifier: TileModifierLibrary.MARKET },
+    { kind: "pip", title: "Iron Gate", detail: "Break a red checker here for +2 global Mult this round.", price: 5, rarity: "rare", modifier: TileModifierLibrary.IRON },
+    { kind: "pip", title: "Ledger Pip", detail: "Break a red checker here to gain +1 Akçe immediately.", price: 5, rarity: "rare", modifier: TileModifierLibrary.LEDGER },
+    { kind: "checker", title: "Golden Checker", detail: "Replace a starting checker with a Golden Checker (Gold Core).", price: 3, rarity: "common", checkerType: CheckerType.GOLDEN },
+    { kind: "checker", title: "Glass Checker", detail: "Replace a starting checker with a Glass Checker (Glass Rim).", price: 3, rarity: "common", checkerType: CheckerType.GLASS },
+    { kind: "checker", title: "Sprinter Checker", detail: "Replace a starting checker with a Sprinter Checker.", price: 3, rarity: "common", checkerType: CheckerType.SPRINTER },
+    { kind: "checker", title: "Anchor Checker", detail: "Replace a starting checker with an Anchor Checker (Anchor Core).", price: 4, rarity: "rare", checkerType: CheckerType.ANCHOR },
+    { kind: "checker", title: "Ruby Checker", detail: "Replace a starting checker with a Ruby Checker (Ruby Rim).", price: 4, rarity: "rare", checkerType: CheckerType.RUBY },
+    { kind: "checker", title: "Prism Checker", detail: "Replace a starting checker with a Prism Checker (Prism Rim).", price: 5, rarity: "legendary", checkerType: CheckerType.PRISM },
+    { kind: "upgrade", title: "Gold Core", detail: "Upgrade a starting checker's core to Gold (+50 Chips).", price: 3, rarity: "common", upgrade: { type: "core", value: "gold" } },
+    { kind: "upgrade", title: "Glass Rim", detail: "Upgrade a starting checker's rim to Glass (x2 Mult, shatters easily).", price: 3, rarity: "common", upgrade: { type: "rim", value: "glass" } },
+    { kind: "upgrade", title: "Anchor Core", detail: "Upgrade a starting checker's core to Anchor (invulnerable).", price: 4, rarity: "rare", upgrade: { type: "core", value: "anchor" } },
+    { kind: "upgrade", title: "Ruby Rim", detail: "Upgrade a starting checker's rim to Ruby (x3 Mult).", price: 4, rarity: "rare", upgrade: { type: "rim", value: "ruby" } },
+    { kind: "upgrade", title: "Platinum Core", detail: "Upgrade a starting checker's core to Platinum (+100 Chips).", price: 5, rarity: "legendary", upgrade: { type: "core", value: "platinum" } },
+    { kind: "upgrade", title: "Prism Rim", detail: "Upgrade a starting checker's rim to Prism (x5 Mult).", price: 6, rarity: "legendary", upgrade: { type: "rim", value: "prism" } }
+  ]);
+
+  function rollShopOffers(options) {
+    const count = (options && options.count) || 4;
+    const legendaries = ShopCatalog.filter((entry) => entry.rarity === "legendary");
+    const rares = ShopCatalog.filter((entry) => entry.rarity === "rare");
+    const commons = ShopCatalog.filter((entry) => entry.rarity === "common");
+    const picked = [];
+    let legendaryUsed = false;
+    let safety = 0;
+
+    while (picked.length < count && safety < 200) {
+      safety += 1;
+      const roll = Math.random() * 100;
+      let pool;
+      if (roll < ShopRarityWeights.legendary && !legendaryUsed && legendaries.length) {
+        pool = legendaries;
+        legendaryUsed = true;
+      } else if (roll < ShopRarityWeights.legendary + ShopRarityWeights.rare) {
+        pool = rares;
+      } else {
+        pool = commons;
+      }
+      if (!pool || !pool.length) continue;
+      const entry = pool[Math.floor(Math.random() * pool.length)];
+      if (picked.some((existing) => existing.title === entry.title)) continue;
+      picked.push(entry);
+    }
+    return picked;
+  }
+
+  function pipCountForRarity(rarity) {
+    if (rarity === "legendary") return 18 + Math.floor(Math.random() * 5);
+    if (rarity === "rare") return 10 + Math.floor(Math.random() * 4);
+    return 4 + Math.floor(Math.random() * 3);
+  }
+
+  const PackTypes = Object.freeze({
+    BEAR_OFF: { id: "bear_off", name: "Bear-Off Box", detail: "4 relic-pip offers. Race one to bear-off.", price: 2, kinds: ["pip"], rolls: 2, count: 4, rarityFloor: null },
+    BLOT: { id: "blot", name: "Blot Barrel", detail: "4 checker drafts. Race one to bear-off.", price: 3, kinds: ["checker"], rolls: 2, count: 4, rarityFloor: null },
+    FORGE_FOLIO: { id: "forge_folio", name: "Forge Folio", detail: "4 core/rim upgrades. Race one to bear-off.", price: 3, kinds: ["upgrade"], rolls: 2, count: 4, rarityFloor: null },
+    CHOUETTE: { id: "chouette", name: "Chouette Case", detail: "3 mixed Rare+ offers, +1 roll.", price: 5, kinds: ["pip", "checker", "upgrade"], rolls: 3, count: 3, rarityFloor: "rare" }
+  });
+
+  function makePack(packType) {
+    let pool = ShopCatalog.filter((entry) => packType.kinds.includes(entry.kind));
+    if (packType.rarityFloor === "rare") {
+      pool = pool.filter((entry) => entry.rarity === "rare" || entry.rarity === "legendary");
+    }
+    const chosen = shuffleArray(pool).slice(0, packType.count);
+    return chosen.map((entry) => {
+      const pipCount = pipCountForRarity(entry.rarity);
+      return { entry, rarity: entry.rarity, pipCount, remaining: pipCount, borneOff: false };
+    });
+  }
+
+  function rollShopPacks(options) {
+    const count = (options && options.count) || 2;
+    return shuffleArray(Object.values(PackTypes)).slice(0, count);
+  }
+
   global.PipjackCore = Object.freeze({
     BOARD_SIZE,
     PIPS_PER_ROW,
@@ -513,6 +681,13 @@
     applyCheckerUpgrade,
     getNextRimTier,
     recalculateCheckerStats,
-    formatNumber
+    formatNumber,
+    ShopCatalog,
+    ShopRarityWeights,
+    PackTypes,
+    rollShopOffers,
+    makePack,
+    rollShopPacks,
+    pipCountForRarity
   });
 })(window);

@@ -13,7 +13,9 @@ const canvas = document.getElementById("gameCanvas");
       CheckerType,
       EnemyAbility,
       TileModifierLibrary,
-      LevelConfig
+      LevelConfig,
+      PackTypes,
+      ShopCatalog
     } = Core;
 
     const Theme = Object.freeze({
@@ -96,6 +98,10 @@ const canvas = document.getElementById("gameCanvas");
       storePurchases: 0,
       storeHidden: false,
       deckPlacement: null,
+      shop: { rerollCost: 1, shakes: 0, dice: [], diceRolledAt: 0, priceDiscount: 0, bonusOffer: null },
+      pipSelect: null,
+      pipReveal: null,
+      bossState: null,
       roundPayout: null,
       payoutStartedAt: 0,
       enemyPendingReentry: [],
@@ -193,6 +199,8 @@ const canvas = document.getElementById("gameCanvas");
       GameState.board = createStartingBoard(levelIndex);
       applyStartingCheckers();
       applyRunUpgrades();
+      GameState.bossState = initBossState(level);
+      applyBossRuleSetup(level);
       GameState.bar = { player: [], enemy: [] };
       GameState.borneOff = [];
       GameState.destroyed = [];
@@ -224,6 +232,9 @@ const canvas = document.getElementById("gameCanvas");
       GameState.storePurchases = 0;
       GameState.storeHidden = false;
       GameState.deckPlacement = null;
+      GameState.pipSelect = null;
+      GameState.pipReveal = null;
+      GameState.shop = null;
       GameState.roundPayout = null;
       GameState.payoutStartedAt = 0;
       GameState.enemyPendingReentry = [];
@@ -244,7 +255,10 @@ const canvas = document.getElementById("gameCanvas");
       GameState.storePurchases = 0;
       GameState.storeHidden = false;
       GameState.deckPlacement = null;
-      GameState.shopOffers = generateShopOffers();
+      GameState.shop = { rerollCost: 1, shakes: 0, dice: [], diceRolledAt: 0, priceDiscount: 0, bonusOffer: null };
+      GameState.shopOffers = rollShopOffers();
+      GameState.pipSelect = null;
+      GameState.pipReveal = null;
       GameState.shopParticles = Array.from({ length: 45 }, () => ({
         x: Math.random(),
         y: Math.random(),
@@ -255,158 +269,44 @@ const canvas = document.getElementById("gameCanvas");
         wobble: Math.random() * Math.PI * 2,
         wobbleSpeed: 0.02 + Math.random() * 0.04
       }));
-      GameState.message = "Shop open. Buy relic-pips, place them in your deck, or upgrade checkers before the next blind.";
+      GameState.message = "Shop open. Shake the dice cup to reroll, buy from the market, or crack a pack.";
     }
 
-    function generateShopOffers() {
-      const pipPool = [
-        {
-          kind: "pip",
-          title: "Iron Gate",
-          detail: "Break a red checker here for +2 global Mult this round.",
-          price: 5,
-          modifier: TileModifierLibrary.IRON
-        },
-        {
-          kind: "pip",
-          title: "Haste Line",
-          detail: "Land here with die 5 or 6 for +20 Chips.",
-          price: 4,
-          modifier: TileModifierLibrary.HASTE
-        },
-        {
-          kind: "pip",
-          title: "Ledger Pip",
-          detail: "Break a red checker here to gain +1 Akçe immediately.",
-          price: 5,
-          modifier: TileModifierLibrary.LEDGER
-        },
-        {
-          kind: "pip",
-          title: "Dealer Pip",
-          detail: "Land here for +1 global Mult this round.",
-          price: 4,
-          modifier: TileModifierLibrary.DEALER
-        },
-        {
-          kind: "pip",
-          title: "Forge Pip",
-          detail: "Land here to temporarily upgrade this checker's rim tier.",
-          price: 3,
-          modifier: TileModifierLibrary.FORGE
-        },
-        {
-          kind: "pip",
-          title: "Market Pip",
-          detail: "Land here to double Chips for that move.",
-          price: 4,
-          modifier: TileModifierLibrary.MARKET
-        }
-      ];
-
-      const checkerPool = [
-        {
-          kind: "checker",
-          title: "Golden Checker",
-          detail: "Replace a starting checker with a Golden Checker (Gold Core).",
-          price: 3,
-          checkerType: CheckerType.GOLDEN
-        },
-        {
-          kind: "checker",
-          title: "Glass Checker",
-          detail: "Replace a starting checker with a Glass Checker (Glass Rim).",
-          price: 3,
-          checkerType: CheckerType.GLASS
-        },
-        {
-          kind: "checker",
-          title: "Anchor Checker",
-          detail: "Replace a starting checker with an Anchor Checker (Anchor Core).",
-          price: 4,
-          checkerType: CheckerType.ANCHOR
-        },
-        {
-          kind: "checker",
-          title: "Ruby Checker",
-          detail: "Replace a starting checker with a Ruby Checker (Ruby Rim).",
-          price: 4,
-          checkerType: CheckerType.RUBY
-        },
-        {
-          kind: "checker",
-          title: "Prism Checker",
-          detail: "Replace a starting checker with a Prism Checker (Prism Rim).",
-          price: 5,
-          checkerType: CheckerType.PRISM
-        },
-        {
-          kind: "checker",
-          title: "Sprinter Checker",
-          detail: "Replace a starting checker with a Sprinter Checker.",
-          price: 3,
-          checkerType: CheckerType.SPRINTER
-        }
-      ];
-
-      const upgradePool = [
-        {
-          kind: "upgrade",
-          title: "Gold Core",
-          detail: "Upgrade a starting checker's core to Gold (+50 Chips).",
-          price: 3,
-          upgrade: { type: "core", value: "gold" }
-        },
-        {
-          kind: "upgrade",
-          title: "Platinum Core",
-          detail: "Upgrade a starting checker's core to Platinum (+100 Chips).",
-          price: 5,
-          upgrade: { type: "core", value: "platinum" }
-        },
-        {
-          kind: "upgrade",
-          title: "Anchor Core",
-          detail: "Upgrade a starting checker's core to Anchor (invulnerable).",
-          price: 4,
-          upgrade: { type: "core", value: "anchor" }
-        },
-        {
-          kind: "upgrade",
-          title: "Glass Rim",
-          detail: "Upgrade a starting checker's rim to Glass (x2 Mult, shatters easily).",
-          price: 3,
-          upgrade: { type: "rim", value: "glass" }
-        },
-        {
-          kind: "upgrade",
-          title: "Ruby Rim",
-          detail: "Upgrade a starting checker's rim to Ruby (x3 Mult).",
-          price: 4,
-          upgrade: { type: "rim", value: "ruby" }
-        },
-        {
-          kind: "upgrade",
-          title: "Prism Rim",
-          detail: "Upgrade a starting checker's rim to Prism (x5 Mult).",
-          price: 6,
-          upgrade: { type: "rim", value: "prism" }
-        }
-      ];
-
-      const pipOffers = shuffle(pipPool).slice(0, 3);
-      const checkerOffers = shuffle(checkerPool).slice(0, 3);
-      const upgradeOffers = shuffle(upgradePool).slice(0, 3);
-      return [...pipOffers, ...checkerOffers, ...upgradeOffers].map((offer, index) => ({
-        ...offer,
-        id: `${offer.kind}-${index}-${offer.title.toLowerCase().replace(/\s+/g, "-")}`,
+    function buildShopOffer(entry, index) {
+      return {
+        ...entry,
+        id: `${entry.kind}-${index}-${entry.title.toLowerCase().replace(/\s+/g, "-")}`,
         bought: false
-      }));
+      };
+    }
+
+    function rollShopOffers() {
+      return Core.rollShopOffers().map((entry, index) => buildShopOffer(entry, index));
+    }
+
+    function makeBonusRareOffer() {
+      const pool = ShopCatalog.filter((entry) => entry.rarity === "rare");
+      const entry = pool[Math.floor(Math.random() * pool.length)];
+      const offer = buildShopOffer(entry, Math.floor(Math.random() * 100000));
+      offer.bonus = true;
+      offer.price = Math.max(1, entry.price - 1);
+      return offer;
+    }
+
+    function makeHiddenLegendaryOffer() {
+      const pool = ShopCatalog.filter((entry) => entry.rarity === "legendary");
+      const entry = pool[Math.floor(Math.random() * pool.length)];
+      const offer = buildShopOffer(entry, Math.floor(Math.random() * 100000));
+      offer.bonus = true;
+      offer.hidden = true;
+      offer.price = Math.max(1, Math.round(entry.price / 2));
+      return offer;
     }
 
     function chooseShopOffer(offer) {
       if (GameState.turnPhase !== TurnPhase.SHOP) return;
       if (offer.bought) return;
+      if (GameState.pipSelect || GameState.pipReveal) return;
       if (GameState.deckPlacement) {
         GameState.message = "Complete or cancel the current placement/upgrade action first.";
         return;
@@ -424,7 +324,7 @@ const canvas = document.getElementById("gameCanvas");
       GameState.storePurchases += 1;
       
       if (offer.kind === "pip") {
-        startDeckPlacement(offer);
+        startPipUpgradeSelection(offer);
       } else if (offer.kind === "checker") {
         startCheckerReplacement(offer);
       } else if (offer.kind === "upgrade") {
@@ -433,7 +333,124 @@ const canvas = document.getElementById("gameCanvas");
     }
 
     function getOfferPrice(offer) {
-      return Math.max(1, offer.price);
+      if (offer.price === 0) return 0;
+      const discount = (GameState.shop && GameState.shop.priceDiscount) || 0;
+      return Math.max(1, offer.price - discount);
+    }
+
+    function shakeDiceCup() {
+      if (GameState.turnPhase !== TurnPhase.SHOP) return;
+      if (GameState.pipSelect || GameState.pipReveal || GameState.deckPlacement || GameState.storeHidden) {
+        GameState.message = "Finish the current action before shaking the cup.";
+        return;
+      }
+      const cost = GameState.shop.rerollCost;
+      if (GameState.money < cost) {
+        GameState.message = `Need ${cost} Akçe to shake the dice cup.`;
+        return;
+      }
+      GameState.money -= cost;
+      GameState.akceDisplayScale = 1.6;
+      GameState.shop.shakes += 1;
+      GameState.shop.rerollCost += 1;
+      const dice = [Math.floor(Math.random() * 6) + 1, Math.floor(Math.random() * 6) + 1];
+      GameState.shop.dice = dice;
+      GameState.shop.diceRolledAt = performance.now();
+      applyShopDiceOutcome(dice);
+    }
+
+    function applyShopDiceOutcome(dice) {
+      const [a, b] = dice;
+      const sum = a + b;
+      if (a === 1 && b === 1) {
+        if (Math.random() < 0.5) {
+          GameState.shop.bonusOffer = makeHiddenLegendaryOffer();
+          GameState.message = `Snake eyes (${a}-${b})! A hidden Legendary surfaces at half price.`;
+        } else {
+          GameState.money = Math.max(0, GameState.money - 1);
+          GameState.message = `Snake eyes (${a}-${b})! The cup claims 1 Akçe.`;
+        }
+        return;
+      }
+      if (a === b) {
+        GameState.shopOffers = rollShopOffers();
+        GameState.shop.bonusOffer = makeBonusRareOffer();
+        GameState.message = `Doublets (${a}-${b})! The market refreshes and a Rare offer surfaces.`;
+        return;
+      }
+      if (sum === 7) {
+        GameState.shop.bonusOffer = makeBonusRareOffer();
+        GameState.message = `Lucky Seven (${a}-${b})! A bonus Rare offer surfaces.`;
+        return;
+      }
+      if (sum >= 11) {
+        GameState.shop.priceDiscount = Math.max(GameState.shop.priceDiscount, 1);
+        GameState.message = `Hot Dice (${a}-${b})! Every price reduced by 1 this shop.`;
+        return;
+      }
+      GameState.shopOffers = rollShopOffers();
+      GameState.message = `Rolled ${a}-${b}. The market refreshes.`;
+    }
+
+    function startPipUpgradeSelection(offer) {
+      const deckPipIndices = Array.from({ length: PIPS_PER_ROW }, (_, i) => i);
+      const candidates = shuffle(deckPipIndices).slice(0, 5);
+      GameState.pipSelect = {
+        modifier: offer.modifier,
+        title: offer.title,
+        offerId: offer.id,
+        candidates,
+        cardRects: [],
+        cancelRect: null
+      };
+      GameState.message = `${offer.title}: choose one of the 5 deck pips to install it on.`;
+    }
+
+    function applyPipUpgrade(pipIndex) {
+      const sel = GameState.pipSelect;
+      if (!sel || !sel.candidates.includes(pipIndex)) return;
+      const oldModifier = GameState.board[pipIndex].modifier ? { ...GameState.board[pipIndex].modifier } : null;
+      const newModifier = sel.modifier;
+      installTileModifier(newModifier, pipIndex);
+      GameState.runUpgrades.deckPips[pipIndex] = newModifier.id;
+      GameState.pipSelect = null;
+      GameState.pipReveal = {
+        pipIndex,
+        oldModifier,
+        newModifier,
+        startedAt: performance.now(),
+        duration: 1500
+      };
+      GameState.message = `${newModifier.name} installed on Pip ${pipIndex + 1}.`;
+      setTimeout(() => { GameState.pipReveal = null; }, 1600);
+    }
+
+    function cancelPipSelect() {
+      const sel = GameState.pipSelect;
+      if (!sel) return;
+      const offer = GameState.shopOffers.find((o) => o.id === sel.offerId);
+      if (offer) {
+        offer.bought = false;
+        GameState.money += getOfferPrice(offer);
+        GameState.akceDisplayScale = 1.6;
+      }
+      GameState.pipSelect = null;
+      GameState.message = "Upgrade canceled. Akçe refunded.";
+    }
+
+    function handlePipSelectClick(x, y) {
+      const sel = GameState.pipSelect;
+      if (!sel) return;
+      if (sel.cancelRect && pointInRect(x, y, sel.cancelRect)) {
+        cancelPipSelect();
+        return;
+      }
+      for (const rect of sel.cardRects) {
+        if (pointInRect(x, y, rect)) {
+          applyPipUpgrade(rect.pipIndex);
+          return;
+        }
+      }
     }
 
     function addCheckerUpgrade(upgrade) {
@@ -605,7 +622,7 @@ const canvas = document.getElementById("gameCanvas");
       const kind = GameState.deckPlacement.kind || "pip";
       GameState.deckPlacement = null;
       GameState.storeHidden = false;
-      GameState.message = `${kind.toUpperCase()} purchase canceled. Akçe refunded.`;
+      GameState.message = offer ? `${kind.toUpperCase()} purchase canceled. Akçe refunded.` : `${kind.toUpperCase()} placement canceled.`;
     }
 
     function toggleStoreVisibility() {
@@ -733,9 +750,14 @@ const canvas = document.getElementById("gameCanvas");
     }
 
     function resolveEnemyTurn() {
-      const pendingAtStart = [...GameState.enemyPendingReentry, ...GameState.bar.enemy];
+      const level = LevelConfig[GameState.levelIndex];
+      let pendingAtStart = [...GameState.enemyPendingReentry, ...GameState.bar.enemy];
       GameState.enemyPendingReentry = [];
       GameState.bar.enemy = [];
+      if (level.bossRule?.instantReentry && pendingAtStart.length) {
+        reenterPendingEnemies(pendingAtStart);
+        pendingAtStart = [];
+      }
       const moves = getEnemyMovesForTurn();
       if (!moves.length) {
         finishEnemyTurn(pendingAtStart, 0, 0);
@@ -748,7 +770,6 @@ const canvas = document.getElementById("gameCanvas");
       let moveIndex = 0;
       GameState.enemyMovesConsumed = 0;
 
-      const level = LevelConfig[GameState.levelIndex];
       const tokens = level.enemyTokens || [3, 3, 3, 3];
 
       const resolveNextMove = () => {
@@ -817,6 +838,7 @@ const canvas = document.getElementById("gameCanvas");
         GameState.message = `${movedCount} enemy ${movedCount === 1 ? "piece" : "pieces"} advanced.${pushText}`;
       }
 
+      applyBossPerTurnEffects();
       reenterPendingEnemies(pendingAtStart);
       checkRoundLoss();
       if (GameState.turnPhase === TurnPhase.ROUND_OVER) return;
@@ -1276,7 +1298,7 @@ const canvas = document.getElementById("gameCanvas");
     function calculateRoundPayout() {
       const level = LevelConfig[GameState.levelIndex];
       const remainingRolls = GameState.rollsRemaining;
-      const blindReward = level.bossRule ? 5 : 3;
+      const blindReward = level.bossRule ? (level.bossRule.payout || 5) : 3;
       const mars = !GameState.enemyEscaped;
       const subtotal = remainingRolls + blindReward;
       const multiplier = mars ? 2 : 1;
@@ -1331,6 +1353,93 @@ const canvas = document.getElementById("gameCanvas");
       resetLevel(0, false);
     }
 
+    function initBossState(level) {
+      const rule = level.bossRule;
+      if (!rule) return null;
+      const state = { rule };
+      if (rule.prime) state.primeStart = rule.prime.start;
+      return state;
+    }
+
+    function getRelicStrength(modifier) {
+      const tiers = { iron: 5, ledger: 5, dealer: 4, market: 4, haste: 4, forge: 3 };
+      return tiers[modifier.id] || 3;
+    }
+
+    function applyBossRuleSetup(level) {
+      const rule = level.bossRule;
+      if (!rule || !GameState.bossState) return;
+      if (rule.suppressRelic) {
+        let best = null;
+        for (let i = 0; i < PIPS_PER_ROW; i++) {
+          const mod = GameState.board[i] && GameState.board[i].modifier;
+          if (mod && !mod._suppressed) {
+            if (!best || getRelicStrength(mod) > getRelicStrength(best.mod)) best = { pip: i, mod };
+          }
+        }
+        if (best) {
+          GameState.board[best.pip].modifier = { ...best.mod, _suppressed: true };
+          GameState.bossState.suppressedPip = best.pip;
+        }
+      }
+    }
+
+    function applyBossPerTurnEffects() {
+      const rule = LevelConfig[GameState.levelIndex].bossRule;
+      if (!rule) return;
+      if (rule.prime) rotatePrime(rule.prime);
+      if (rule.targetEscalation) {
+        GameState.score.target += rule.targetEscalation;
+        addFloatingText(layout.leftMenuWidth - 40, 150, `Target +${rule.targetEscalation}`, Theme.danger, 1.1);
+      }
+      if (rule.multDecay) {
+        const before = GameState.score.mult;
+        GameState.score.mult = Math.max(1, GameState.score.mult - rule.multDecay);
+        if (GameState.score.mult < before) {
+          addFloatingText(layout.leftMenuWidth - 40, 210, `Mult -${rule.multDecay}`, Theme.danger, 1.1);
+        }
+      }
+    }
+
+    function rotatePrime(prime) {
+      const state = GameState.bossState;
+      if (!state) return;
+      for (let i = 0; i < prime.length; i++) {
+        const idx = state.primeStart + i;
+        if (GameState.board[idx]) GameState.board[idx].locked = false;
+      }
+      const minStart = PIPS_PER_ROW;
+      const maxStart = BOARD_SIZE - prime.length;
+      let next = state.primeStart + prime.shift;
+      if (next > maxStart) next = minStart;
+      state.primeStart = next;
+      for (let i = 0; i < prime.length; i++) {
+        const idx = state.primeStart + i;
+        if (GameState.board[idx]) GameState.board[idx].locked = true;
+      }
+      addFloatingText(getPipCenter(state.primeStart + Math.floor(prime.length / 2)).x, getPipCenter(state.primeStart).y - 24, "PRIME SHIFTS", "#a254c9", 1);
+    }
+
+    function getBossTooltip(level) {
+      const rule = level.bossRule;
+      const details = {
+        the_wall: "Locks Pips 13 and 14 on the enemy half. Your checkers cannot LAND on locked pips, so your route through enemy territory is restricted. Existing checkers on those pips are unaffected.",
+        the_prime: "A 6-pip 'prime' wall locks the enemy half. Each enemy phase the ENTIRE prime CREEPS +1 pip toward your deck (then wraps back). Your usable landing space shifts and shrinks every turn - plan moves around the moving wall. Locked pips are marked on the board.",
+        the_backgame: "Every enemy checker is a RAM: any enemy can breach a defended gate of 2+ of your checkers and dislodge one. Also, any enemy you break RE-ENTERS THE SAME enemy turn instead of waiting for the next. Captures and static defense are far less reliable.",
+        the_cube: "The doubling cube raises the stakes each enemy phase: the TARGET SCORE climbs and your GLOBAL MULT decays (floor x1). Additionally your single highest-value relic-pip is SUPPRESSED for the whole fight - its effect is inert (shown crossed-out on the board)."
+      };
+      const state = GameState.bossState;
+      const live = [];
+      if (rule.prime && state) live.push(`Current prime window: Pips ${state.primeStart + 1}-${state.primeStart + rule.prime.length}.`);
+      if (rule.targetEscalation) live.push(` Target now: ${GameState.score.target.toLocaleString()}.`);
+      if (rule.multDecay) live.push(` Global Mult now: x${formatNumber(GameState.score.mult)}.`);
+      return {
+        kind: "boss",
+        title: `${rule.name} - Boss Blind`,
+        body: (details[rule.id] || rule.description) + (live.length ? live.join("") : "")
+      };
+    }
+
     function clearSelection() {
       GameState.selected = null;
       GameState.validTargets = [];
@@ -1341,6 +1450,12 @@ const canvas = document.getElementById("gameCanvas");
       const rect = canvas.getBoundingClientRect();
       const x = event.clientX - rect.left;
       const y = event.clientY - rect.top;
+
+      if (GameState.pipSelect) {
+        handlePipSelectClick(x, y);
+        return;
+      }
+      if (GameState.pipReveal) return;
 
       const isStoreOpen = GameState.turnPhase === TurnPhase.SHOP && !GameState.storeHidden && !GameState.deckPlacement;
 
@@ -1558,6 +1673,8 @@ const canvas = document.getElementById("gameCanvas");
       if (GameState.turnPhase === TurnPhase.ROUND_OVER && GameState.roundPayout) drawRoundClearOverlay(width, height);
       if (GameState.turnPhase === TurnPhase.SHOP && !GameState.storeHidden && !GameState.deckPlacement) drawStoreOverlay(width, height);
       if (GameState.turnPhase === TurnPhase.SHOP) drawStoreControls(width, height);
+      if (GameState.turnPhase === TurnPhase.SHOP && GameState.pipSelect) drawPipSelectOverlay(width, height);
+      if (GameState.turnPhase === TurnPhase.SHOP && GameState.pipReveal) drawPipRevealOverlay(width, height);
       if (GameState.deckPlacement) drawDeckPlacementBanner(width, height);
       drawDebugUI(width, height);
       updateHoverTooltip();
@@ -2068,6 +2185,9 @@ function drawBackground(width, height) {
       const isAnimatingModifier = GameState.pipPlacementAnimations && GameState.pipPlacementAnimations.some(a => a.pipIndex === pipIndex);
       if (pip.modifier && !isAnimatingModifier) {
         drawTileModifier(pip.modifier, x + width / 2, direction === "down" ? y + 27 : y + height - 27);
+        if (pip.modifier._suppressed) {
+          drawSuppressedOverlay(x + width / 2, direction === "down" ? y + 27 : y + height - 27);
+        }
       }
 
       if (isHoveringDeckSlot && GameState.deckPlacement?.modifier) {
@@ -2089,17 +2209,32 @@ function drawBackground(width, height) {
     }
 
     function drawLockedMarker(cx, cy) {
+      const prime = GameState.bossState && GameState.bossState.rule && GameState.bossState.rule.prime;
       ctx.save();
-      ctx.fillStyle = "rgba(9, 24, 27, 0.86)";
+      ctx.fillStyle = prime ? "rgba(28,12,40,0.9)" : "rgba(9, 24, 27, 0.86)";
       roundRect(cx - 22, cy - 14, 44, 28, 5);
       ctx.fill();
-      ctx.strokeStyle = Theme.brass;
+      ctx.strokeStyle = prime ? "#a254c9" : Theme.brass;
       ctx.stroke();
       ctx.fillStyle = Theme.ink;
-      ctx.font = "900 12px Georgia, serif";
+      ctx.font = prime ? "900 10px Georgia, serif" : "900 12px Georgia, serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText("LOCK", cx, cy + 1);
+      ctx.fillText(prime ? "PRIME" : "LOCK", cx, cy + 1);
+      ctx.restore();
+    }
+
+    function drawSuppressedOverlay(cx, cy) {
+      ctx.save();
+      ctx.strokeStyle = Theme.danger;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 16, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(cx - 11, cy - 11);
+      ctx.lineTo(cx + 11, cy + 11);
+      ctx.stroke();
       ctx.restore();
     }
 
@@ -2868,14 +3003,29 @@ function drawBackground(width, height) {
       const enemyName = level.bossRule ? level.bossRule.name : "The Adversary";
       const enemyLevel = getRomanNumeral(level.level);
       const enemyPassive = level.bossRule ? level.bossRule.description : "Chance to block pips.";
-      const enemyTarget = level.target;
+      const enemyTarget = GameState.score.target;
+      const bossBoxX = x + 12;
+      const bossBoxY = cursorY;
+      const bossBoxW = menuWidth - 24;
+      const dataBoxH = 92;
 
       ctx.fillStyle = "rgba(5,18,20,0.88)";
-      const dataBoxH = 92;
-      roundRect(x + 12, cursorY, menuWidth - 24, dataBoxH, 3);
+      roundRect(bossBoxX, bossBoxY, bossBoxW, dataBoxH, 3);
       ctx.fill();
-      ctx.strokeStyle = "rgba(201,138,67,0.38)";
+      ctx.strokeStyle = level.bossRule ? "rgba(162,84,201,0.6)" : "rgba(201,138,67,0.38)";
+      ctx.lineWidth = level.bossRule ? 1.8 : 1;
       ctx.stroke();
+
+      if (level.bossRule) {
+        GameState.buttons.push({
+          x: bossBoxX,
+          y: bossBoxY,
+          width: bossBoxW,
+          height: dataBoxH,
+          action: null,
+          tooltip: getBossTooltip(level)
+        });
+      }
 
       // Name
       ctx.fillStyle = Theme.muted;
@@ -2930,8 +3080,8 @@ function drawBackground(width, height) {
       const tokens = level.enemyTokens || [3, 3, 3, 3];
       const tokensCount = tokens.length;
       const rearCount = Math.floor(tokensCount / 2);
-      const tokenSize = 34;
-      const tokenGap = 12;
+      const tokenGap = 8;
+      const tokenSize = Math.min(34, Math.floor((menuWidth - 24 - tokenGap * (tokensCount - 1)) / tokensCount));
       const totalWidth = tokensCount * tokenSize + (tokensCount - 1) * tokenGap;
       const startTokenX = x + (menuWidth - totalWidth) / 2;
 
@@ -3531,11 +3681,9 @@ function drawBackground(width, height) {
       if (panelW < 560 || panelH < 420) return;
 
       ctx.save();
-      // Backdrop dimming
       ctx.fillStyle = "rgba(3,8,11,0.66)";
       ctx.fillRect(layout.leftMenuWidth, 0, width - layout.leftMenuWidth, height);
 
-      // Velvet radial gradient panel background
       const gradient = ctx.createRadialGradient(x + panelW / 2, y + panelH / 2, 50, x + panelW / 2, y + panelH / 2, panelW / 2 + 100);
       gradient.addColorStop(0, "rgba(18,48,53,0.98)");
       gradient.addColorStop(0.65, "rgba(7,16,20,0.99)");
@@ -3544,21 +3692,16 @@ function drawBackground(width, height) {
       roundRect(x, y, panelW, panelH, 8);
       ctx.fill();
 
-      // Ornate double borders
       ctx.strokeStyle = "rgba(201,138,67,0.72)";
       ctx.lineWidth = 2.5;
       roundRect(x, y, panelW, panelH, 8);
       ctx.stroke();
-
       ctx.strokeStyle = "rgba(246,223,170,0.18)";
       ctx.lineWidth = 1;
       roundRect(x + 5, y + 5, panelW - 10, panelH - 10, 6);
       ctx.stroke();
-
-      // Ornate corners
       drawArtDecoCorners(x, y, panelW, panelH, 28);
 
-      // Animate and draw gold particle motes
       if (GameState.shopParticles && GameState.shopParticles.length) {
         ctx.save();
         for (const particle of GameState.shopParticles) {
@@ -3569,10 +3712,8 @@ function drawBackground(width, height) {
           if (particle.x > 1) particle.x = 0;
           if (particle.y < 0) particle.y = 1;
           if (particle.y > 1) particle.y = 0;
-
           const px = x + particle.x * panelW + Math.sin(particle.wobble) * 6;
           const py = y + particle.y * panelH;
-
           ctx.fillStyle = `rgba(246, 223, 170, ${particle.alpha})`;
           ctx.beginPath();
           ctx.arc(px, py, particle.size, 0, Math.PI * 2);
@@ -3581,7 +3722,6 @@ function drawBackground(width, height) {
         ctx.restore();
       }
 
-      // Title & Akce count
       ctx.fillStyle = Theme.ink;
       ctx.textAlign = "left";
       ctx.textBaseline = "middle";
@@ -3597,61 +3737,284 @@ function drawBackground(width, height) {
 
       ctx.fillStyle = Theme.muted;
       ctx.font = "700 13px Inter, sans-serif";
-      wrapText("Buy relic-pips to place on your bottom deck pips. Piece upgrades still hit the top white checker.", x + 34, y + 110, panelW - 68, 16);
+      wrapText("Shake the dice cup to reroll the market. Buy from the market, or crack a pack and race to bear off an offer.", x + 34, y + 110, panelW - 68, 16);
 
-      const pips = GameState.shopOffers.filter((offer) => offer.kind === "pip");
-      const checkers = GameState.shopOffers.filter((offer) => offer.kind === "checker");
-      const upgrades = GameState.shopOffers.filter((offer) => offer.kind === "upgrade");
-      const gap = 18;
-      const cardW = (panelW - 68 - gap * 2) / 3;
-      const cardH = 110;
+      drawDiceCupBar(x + 34, y + 138, panelW - 68);
 
-      // Header 1: RELIC-PIPS
-      ctx.fillStyle = Theme.gold;
-      ctx.font = "900 13px Inter, sans-serif";
-      ctx.fillText("✦  RELIC-PIPS  ✦", x + 34, y + 130);
-      ctx.strokeStyle = "rgba(201, 138, 67, 0.38)";
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(x + 34, y + 138);
-      ctx.lineTo(x + panelW - 34, y + 138);
-      ctx.stroke();
-
-      pips.forEach((offer, index) => {
-        drawShopCard(x + 34 + index * (cardW + gap), y + 148, cardW, cardH, offer);
-      });
-
-      // Header 2: CHECKER DRAFT
-      ctx.fillStyle = "#df4e56";
-      ctx.font = "900 13px Inter, sans-serif";
-      ctx.fillText("✦  CHECKER DRAFT  ✦", x + 34, y + 276);
-      ctx.strokeStyle = "rgba(223, 78, 86, 0.38)";
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(x + 34, y + 284);
-      ctx.lineTo(x + panelW - 34, y + 284);
-      ctx.stroke();
-
-      checkers.forEach((offer, index) => {
-        drawShopCard(x + 34 + index * (cardW + gap), y + 294, cardW, cardH, offer);
-      });
-
-      // Header 3: CORE & RIM UPGRADES
-      ctx.fillStyle = Theme.blue;
-      ctx.font = "900 13px Inter, sans-serif";
-      ctx.fillText("✦  CORE & RIM UPGRADES  ✦", x + 34, y + 422);
-      ctx.strokeStyle = "rgba(37, 185, 201, 0.38)";
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(x + 34, y + 430);
-      ctx.lineTo(x + panelW - 34, y + 430);
-      ctx.stroke();
-
-      upgrades.forEach((offer, index) => {
-        drawShopCard(x + 34 + index * (cardW + gap), y + 440, cardW, cardH, offer);
-      });
+      const marketOffers = GameState.shopOffers.filter((offer) => !offer.bought);
+      if (GameState.shop && GameState.shop.bonusOffer && !GameState.shop.bonusOffer.bought) {
+        marketOffers.push(GameState.shop.bonusOffer);
+      }
+      drawOfferSection("✦  MARKET  ✦", Theme.gold, "rgba(201, 138, 67, 0.38)", x + 34, y + 190, panelW - 68, marketOffers, 112);
 
       drawButton(x + panelW - 214, y + panelH - 70, 180, 46, "Next Blind", startNextBlind, true, "primary");
+      ctx.restore();
+    }
+
+    function drawOfferSection(label, color, lineColor, x, y, width, offers, cardH) {
+      ctx.fillStyle = color;
+      ctx.font = "900 13px Inter, sans-serif";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "middle";
+      ctx.fillText(label, x, y);
+      ctx.strokeStyle = lineColor;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x, y + 8);
+      ctx.lineTo(x + width, y + 8);
+      ctx.stroke();
+
+      const count = Math.max(1, offers.length);
+      const gap = 14;
+      const cardW = (width - gap * (count - 1)) / count;
+      offers.forEach((offer, index) => {
+        drawShopCard(x + index * (cardW + gap), y + 20, cardW, cardH, offer);
+      });
+      return y + 20 + cardH;
+    }
+
+    function drawDiceCupBar(x, y, width) {
+      const shop = GameState.shop || { dice: [], rerollCost: 1, priceDiscount: 0 };
+      ctx.fillStyle = Theme.muted;
+      ctx.font = "800 11px Inter, sans-serif";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "middle";
+      ctx.fillText("DICE CUP", x, y + 6);
+
+      const dice = shop.dice || [];
+      const dieSize = 30;
+      for (let i = 0; i < 2; i++) {
+        const value = dice[i] || 0;
+        if (value) {
+          drawDie3D(x + 96 + i * 40, y + 6, dieSize, value, -0.06, { animated: false, topValue: ((value + 1) % 6) + 1, sideValue: ((value + 3) % 6) + 1 });
+        }
+      }
+      if (!dice.length) {
+        ctx.fillStyle = "rgba(143,176,164,0.5)";
+        ctx.font = "700 11px Inter, sans-serif";
+        ctx.fillText("shake to reroll the market", x + 100, y + 6);
+      }
+
+      if (shop.priceDiscount) {
+        ctx.fillStyle = Theme.accent;
+        ctx.font = "800 11px Inter, sans-serif";
+        ctx.fillText(`−${shop.priceDiscount} Akçe all prices`, x + 200, y + 6);
+      }
+
+      const cost = shop.rerollCost;
+      drawShopActionButton(x + width - 184, y - 14, 184, 40, `Shake Cup (${cost})`, shakeDiceCup, GameState.money >= cost);
+    }
+
+    function drawShopActionButton(x, y, w, h, label, action, enabled = true, variant = "primary") {
+      drawButton(x, y, w, h, label, action, enabled, variant);
+      if (enabled) {
+        const last = GameState.buttons[GameState.buttons.length - 1];
+        if (last) last.tooltip = { kind: "shop", title: label, body: `${label}.` };
+      }
+    }
+
+    function drawPipSelectOverlay(width, height) {
+      const sel = GameState.pipSelect;
+      if (!sel) return;
+      ctx.save();
+      ctx.fillStyle = "rgba(3,8,11,0.86)";
+      ctx.fillRect(0, 0, width, height);
+
+      const cardW = Math.min(840, width - 96);
+      const cardH = 320;
+      const x = (width - cardW) / 2;
+      const y = (height - cardH) / 2;
+
+      const gradient = ctx.createLinearGradient(x, y, x + cardW, y + cardH);
+      gradient.addColorStop(0, "#1a1030");
+      gradient.addColorStop(0.5, "#0b1d22");
+      gradient.addColorStop(1, "#2a1640");
+      ctx.fillStyle = gradient;
+      roundRect(x, y, cardW, cardH, 10);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(162,84,201,0.8)";
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      drawArtDecoCorners(x, y, cardW, cardH, 24);
+
+      ctx.fillStyle = Theme.ink;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.font = "950 30px Inter, sans-serif";
+      ctx.fillText("CHOOSE A DECK PIP", x + cardW / 2, y + 46);
+      ctx.fillStyle = Theme.muted;
+      ctx.font = "700 13px Inter, sans-serif";
+      ctx.fillText(`Install ${sel.title} on one of these 5 deck pips.`, x + cardW / 2, y + 78);
+
+      const count = sel.candidates.length;
+      const gap = 16;
+      const slotW = (cardW - 56 - gap * (count - 1)) / count;
+      const slotH = 160;
+      const slotY = y + 104;
+      sel.cardRects = [];
+      for (let i = 0; i < count; i++) {
+        const pipIndex = sel.candidates[i];
+        const sx = x + 28 + i * (slotW + gap);
+        drawPipSelectCard(sx, slotY, slotW, slotH, pipIndex, sel.modifier);
+        sel.cardRects.push({ x: sx, y: slotY, width: slotW, height: slotH, pipIndex });
+      }
+
+      const cancelX = x + cardW / 2 - 90;
+      const cancelY = y + cardH - 48;
+      drawButton(cancelX, cancelY, 180, 36, "Cancel (Refund)", cancelPipSelect, true, "secondary");
+      sel.cancelRect = { x: cancelX, y: cancelY, width: 180, height: 36 };
+
+      ctx.restore();
+    }
+
+    function drawPipSelectCard(x, y, w, h, pipIndex, newModifier) {
+      const pip = GameState.board[pipIndex];
+      const oldModifier = pip ? pip.modifier : null;
+      const isHover = GameState.hover.active && pointInRect(GameState.hover.x, GameState.hover.y, { x, y, width: w, height: h });
+
+      ctx.save();
+      if (isHover) {
+        ctx.shadowColor = "rgba(112,227,95,0.6)";
+        ctx.shadowBlur = 16;
+      }
+      ctx.fillStyle = "rgba(5,18,20,0.9)";
+      roundRect(x, y, w, h, 8);
+      ctx.fill();
+      ctx.strokeStyle = isHover ? Theme.valid : "rgba(201,138,67,0.4)";
+      ctx.lineWidth = isHover ? 2.5 : 1.2;
+      ctx.stroke();
+      ctx.restore();
+
+      ctx.fillStyle = Theme.muted;
+      ctx.font = "800 11px Inter, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(`DECK PIP ${pipIndex + 1}`, x + w / 2, y + 22);
+
+      ctx.fillStyle = "rgba(143,176,164,0.7)";
+      ctx.font = "700 9px Inter, sans-serif";
+      ctx.fillText("CURRENT", x + w * 0.3, y + 48);
+      if (oldModifier) {
+        drawTileModifier(oldModifier, x + w * 0.3, y + 84, 0.95);
+      } else {
+        ctx.save();
+        ctx.setLineDash([4, 4]);
+        ctx.strokeStyle = "rgba(143,176,164,0.4)";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(x + w * 0.3, y + 84, 14, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+        ctx.fillStyle = "rgba(143,176,164,0.5)";
+        ctx.font = "700 8px Inter, sans-serif";
+        ctx.fillText("EMPTY", x + w * 0.3, y + 84);
+      }
+
+      ctx.strokeStyle = Theme.gold;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(x + w * 0.43, y + 84);
+      ctx.lineTo(x + w * 0.57, y + 84);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x + w * 0.57, y + 84);
+      ctx.lineTo(x + w * 0.51, y + 79);
+      ctx.lineTo(x + w * 0.51, y + 89);
+      ctx.closePath();
+      ctx.fillStyle = Theme.gold;
+      ctx.fill();
+
+      ctx.fillStyle = Theme.gold;
+      ctx.font = "700 9px Inter, sans-serif";
+      ctx.fillText("NEW", x + w * 0.7, y + 48);
+      drawTileModifier(newModifier, x + w * 0.7, y + 84, 1.05);
+
+      ctx.fillStyle = isHover ? Theme.valid : "rgba(143,176,164,0.7)";
+      ctx.font = `${isHover ? "900 13px" : "700 12px"} Inter, sans-serif`;
+      ctx.fillText(isHover ? "CLICK TO INSTALL" : "click to choose", x + w / 2, y + h - 22);
+    }
+
+    function drawPipRevealOverlay(width, height) {
+      const reveal = GameState.pipReveal;
+      if (!reveal) return;
+      const elapsed = performance.now() - reveal.startedAt;
+      const p = Math.min(1, elapsed / reveal.duration);
+
+      ctx.save();
+      ctx.fillStyle = "rgba(3,8,11,0.9)";
+      ctx.fillRect(0, 0, width, height);
+
+      const panelW = 460;
+      const panelH = 320;
+      const x = (width - panelW) / 2;
+      const y = (height - panelH) / 2;
+
+      const gradient = ctx.createLinearGradient(x, y, x + panelW, y + panelH);
+      gradient.addColorStop(0, "#2a1640");
+      gradient.addColorStop(0.5, "#0b1d22");
+      gradient.addColorStop(1, "#1a1030");
+      ctx.fillStyle = gradient;
+      roundRect(x, y, panelW, panelH, 12);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(228,183,90,0.7)";
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      drawArtDecoCorners(x, y, panelW, panelH, 22);
+
+      ctx.fillStyle = Theme.gold;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.font = "900 18px Inter, sans-serif";
+      ctx.fillText(`PIP ${reveal.pipIndex + 1} UPGRADED`, x + panelW / 2, y + 46);
+
+      const cx = x + panelW / 2;
+      const cy = y + panelH / 2 - 4;
+
+      if (p < 0.5) {
+        const a = 1 - p * 2;
+        const scale = 1 + p * 0.4;
+        ctx.save();
+        ctx.globalAlpha = a;
+        if (reveal.oldModifier) {
+          drawTileModifier(reveal.oldModifier, cx, cy, scale);
+        } else {
+          ctx.setLineDash([5, 5]);
+          ctx.strokeStyle = `rgba(143,176,164,${a})`;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(cx, cy, 15 * scale, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.restore();
+      } else {
+        if (p < 0.62) {
+          const burstA = Math.max(0, 1 - (p - 0.5) / 0.12);
+          ctx.save();
+          ctx.globalAlpha = burstA;
+          ctx.fillStyle = "#fff";
+          ctx.beginPath();
+          ctx.arc(cx, cy, 40 * (1 - burstA) + 12, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+        const np = (p - 0.5) / 0.5;
+        const scale = 0.4 + np * 0.7;
+        ctx.save();
+        ctx.globalAlpha = Math.min(1, np * 1.5);
+        ctx.shadowColor = reveal.newModifier.color || Theme.gold;
+        ctx.shadowBlur = 24;
+        drawTileModifier(reveal.newModifier, cx, cy, scale);
+        ctx.restore();
+      }
+
+      ctx.fillStyle = Theme.ink;
+      ctx.font = "800 14px Georgia, serif";
+      ctx.fillText(p < 0.5 ? (reveal.oldModifier ? reveal.oldModifier.name : "Empty") : reveal.newModifier.name, cx, cy + 74);
+
+      ctx.fillStyle = Theme.muted;
+      ctx.font = "700 11px Inter, sans-serif";
+      ctx.fillText("returning to shop...", cx, y + panelH - 30);
+
       ctx.restore();
     }
 
@@ -3833,6 +4196,14 @@ function drawBackground(width, height) {
         ctx.restore();
       }
 
+      if (offer.rarity) {
+        const rc = offer.rarity === "legendary" ? "#a254c9" : offer.rarity === "rare" ? "#c98a43" : "#8fb0a4";
+        ctx.fillStyle = rc;
+        ctx.beginPath();
+        ctx.arc(x + 10, y + 10, 4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
       // Border and alpha for affordablity
       ctx.globalAlpha = affordable || offer.bought ? 1 : 0.58;
       ctx.strokeStyle = offer.bought ? Theme.accent : "rgba(255, 255, 255, 0.22)";
@@ -3897,13 +4268,14 @@ function drawBackground(width, height) {
         ctx.fillStyle = affordable ? Theme.gold : Theme.muted;
         ctx.font = "900 12px Georgia, serif";
 
-        const text = `${price}`;
+        const free = price === 0;
+        const text = free ? "FREE" : `${price}`;
         const textW = ctx.measureText(text).width;
-        const totalContentW = textW + 4 + 12; // text + gap + icon size
+        const totalContentW = free ? textW + 12 : textW + 4 + 12; // text + gap + icon size
         const startX = pillX + (pillW - totalContentW) / 2;
 
-        drawAkceIcon(startX + 6, pillY + pillH / 2, 6);
-        ctx.fillText(text, startX + 16, pillY + pillH / 2 + 1);
+        if (!free) drawAkceIcon(startX + 6, pillY + pillH / 2, 6);
+        ctx.fillText(text, startX + (free ? 6 : 16), pillY + pillH / 2 + 1);
         ctx.restore();
       }
 
